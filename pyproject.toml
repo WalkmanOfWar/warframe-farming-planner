@@ -1,0 +1,32 @@
+[project]
+name = "warframe-optimize-routes"
+version = "0.1.0"
+description = "Suggest fewest-mission farming routes in Warframe based on what a player already owns"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "WalkmanOfWar" }]
+keywords = ["warframe", "farming", "relics", "prime", "set-cover"]
+dependencies = [
+    "requests>=2.31",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "responses>=0.25",
+]
+
+[project.scripts]
+wfroutes = "warframe_routes.cli:cli"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

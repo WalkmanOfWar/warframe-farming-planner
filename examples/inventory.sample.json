@@ -1,0 +1,10 @@
+{
+  "_comment": "Trimmed sample of an AlecaFrame / warframe-api-helper export. Real files have many more arrays. Loose parts live in MiscItems / Recipes as {ItemType, ItemCount}.",
+  "MiscItems": [
+    {"ItemType": "/Lotus/Types/Recipes/WarframeRecipes/CalibanPrimeBlueprint", "ItemCount": 1},
+    {"ItemType": "/Lotus/Types/Recipes/WarframeRecipes/CalibanPrimeChassisComponent", "ItemCount": 1},
+    {"ItemType": "/Lotus/Types/Recipes/WarframeRecipes/CalibanPrimeHelmetComponent", "ItemCount": 1},
+    {"ItemType": "/Lotus/Types/Items/MiscItems/OrokinCell", "ItemCount": 42}
+  ],
+  "Recipes": []
+}
