@@ -155,12 +155,28 @@ def _build_image_map(
     out: dict[str, str] = {}
     for name in relevant:
         norm = items.normalize(name)
+
+        # 1. Direct hit (equipment name or component with its own imageName).
         if norm in norm_to_url:
-            # Direct hit (equipment name, or component with own imageName).
             out[name] = norm_to_url[norm]
-        else:
-            # Parts rarely have their own image; use the parent equipment's icon.
-            eq_norm = part_equipment.get(norm)
-            if eq_norm and eq_norm in norm_to_url:
-                out[name] = norm_to_url[eq_norm]
+            continue
+
+        # 2. Parent equipment via part_equipment (values are display names → normalize).
+        eq_disp = part_equipment.get(norm)
+        if eq_disp:
+            eq_n = items.normalize(eq_disp)
+            if eq_n in norm_to_url:
+                out[name] = norm_to_url[eq_n]
+                continue
+
+        # 3. Progressive prefix: strip trailing words until a match is found.
+        #    "Ruvox Glove Blueprint" → "Ruvox Glove" → "Ruvox"
+        words = norm.split()
+        while len(words) > 1:
+            words.pop()
+            prefix = " ".join(words)
+            if prefix in norm_to_url:
+                out[name] = norm_to_url[prefix]
+                break
+
     return out
