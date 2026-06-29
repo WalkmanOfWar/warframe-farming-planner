@@ -170,6 +170,27 @@ function Badge({ children, color, bg }) {
   )
 }
 
+function SortToggle({ value, onChange, options }) {
+  return (
+    <div style={{ display: 'inline-flex', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
+      {options.map(o => {
+        const active = o.id === value
+        return (
+          <button key={o.id} onClick={() => onChange(o.id)}
+            style={{
+              border: 'none', cursor: 'pointer', padding: '5px 10px', fontSize: 12,
+              fontWeight: 600, fontFamily: 'inherit',
+              background: active ? C.accentFaint : 'transparent',
+              color: active ? C.accent : C.muted,
+            }}>
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function TierBadge({ tier }) {
   const bg = TIER_COLOR[tier] || C.surface2
   return (
@@ -412,6 +433,7 @@ function ItemIcon({ url, name, size = 28 }) {
 
 function Results({ r }) {
   const img = r.images || {}
+  const [sort, setSort] = useState('time')
 
   if (!r.missing_equipment) {
     return (
@@ -425,6 +447,14 @@ function Results({ r }) {
   }
 
   const nonPrimeParts = r.non_prime.reduce((n, m) => n + m.parts.length, 0)
+
+  // Sort key: "time" = biggest time sink first; "efficiency" = most parts per
+  // run first (best bang for the buck). Unknown-effort missions sink to the end.
+  const effOf = (m) => (m.runs ? m.parts.length / m.runs : -1)
+  const sortedNonPrime = [...r.non_prime].sort((a, b) =>
+    sort === 'efficiency'
+      ? effOf(b) - effOf(a)
+      : (b.minutes ?? -1) - (a.minutes ?? -1))
 
   return (
     <div>
@@ -456,11 +486,23 @@ function Results({ r }) {
       {/* Non-prime */}
       {r.non_prime.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
-          <SectionHeader icon={<MapPin size={15} color={C.gold} />}
-            title={`Non-Prime — ${r.non_prime.length} mission${r.non_prime.length !== 1 ? 's' : ''}`} />
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+            padding: '20px 20px 16px', borderBottom: `1px solid ${C.border}`,
+          }}>
+            <MapPin size={15} color={C.gold} />
+            <span style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>
+              {`Non-Prime — ${r.non_prime.length} mission${r.non_prime.length !== 1 ? 's' : ''}`}
+            </span>
+            <span style={{ flex: 1 }} />
+            <SortToggle value={sort} onChange={setSort} options={[
+              { id: 'time', label: 'Longest first' },
+              { id: 'efficiency', label: 'Most parts / run' },
+            ]} />
+          </div>
           <div style={{ padding: '0 20px 20px' }}>
-            {r.non_prime.map((m, i) => (
-              <div key={i}>
+            {sortedNonPrime.map((m, i) => (
+              <div key={m.node}>
                 {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
                 <MissionRow index={i + 1} mission={m} images={img} />
               </div>
