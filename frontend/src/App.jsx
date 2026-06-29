@@ -481,6 +481,13 @@ function Results({ r }) {
           <ItemGrid items={r.no_mission_source} images={img} />
         </CollapsibleCard>
       )}
+
+      {(r.no_part_source || []).length > 0 && (
+        <CollapsibleCard icon={<ShoppingBag size={15} color={C.gold} />}
+          title="Buy from Market (Blueprints — no mission drop)" count={r.no_part_source.length}>
+          <ItemGrid items={r.no_part_source} images={img} />
+        </CollapsibleCard>
+      )}
     </div>
   )
 }

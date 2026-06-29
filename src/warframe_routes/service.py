@@ -53,6 +53,8 @@ class RouteResult:
     vaulted_equipment: list[str] = field(default_factory=list)
     vaulted_part_count: int = 0
     no_mission_source: list[str] = field(default_factory=list)
+    # Parts with /Recipes/ but no mission/relic drop (e.g. warframe main BPs from Market)
+    no_part_source: list[str] = field(default_factory=list)
     # display_name → https://cdn.warframestat.us/img/<imageName>
     images: dict[str, str] = field(default_factory=dict)
 
@@ -81,6 +83,7 @@ def plan_route(
     plan.not_farmable -= owned_parts
     for p in owned_parts:
         plan.prime_part_relics.pop(p, None)
+        plan.orphan_parts.pop(p, None)
 
     disp = lambda p: plan.part_display.get(p, p)
 
@@ -111,6 +114,7 @@ def plan_route(
     result.vaulted_equipment = sorted(plan.vaulted_equipment())
     result.vaulted_part_count = len(plan.not_farmable)
     result.no_mission_source = sorted(plan.no_mission_source)
+    result.no_part_source = sorted(plan.orphan_parts.values())
     result.images = _build_image_map(items_data, result, plan.part_equipment)
     return result
 
@@ -136,6 +140,7 @@ def _build_image_map(
         relevant.add(pp.part)
     relevant.update(result.vaulted_equipment)
     relevant.update(result.no_mission_source)
+    relevant.update(result.no_part_source)
 
     # normalized name → CDN URL (equipment names and component names)
     norm_to_url: dict[str, str] = {}
@@ -155,23 +160,40 @@ def _build_image_map(
     out: dict[str, str] = {}
     for name in relevant:
         norm = items.normalize(name)
+        words = norm.split()
 
-        # 1. Direct hit: exact match on equipment or a component that has its own
-        #    imageName (e.g. "Gauss Neuroptics Blueprint" if WFCD supplies it).
+        # For Blueprint items the WFCD component imageName is a generic schematic.
+        # Prefer the progressive prefix (finds the specific component or warframe
+        # portrait) over the schematic direct hit.
+        #   "Citrine Blueprint"          → "citrine"          (warframe portrait)
+        #   "Citrine Chassis Blueprint"  → "citrine chassis"  (chassis icon)
+        #   "Ambassador Barrel Blueprint"→ "ambassador barrel"(gun part icon)
+        if words and words[-1] == "blueprint":
+            w = list(words)
+            found = False
+            while len(w) > 1:
+                w.pop()
+                prefix = " ".join(w)
+                if prefix in norm_to_url:
+                    out[name] = norm_to_url[prefix]
+                    found = True
+                    break
+            if found:
+                continue
+            # Fall through to direct hit if no prefix matched (e.g. single-word
+            # equipment names, though that would be unusual).
+
+        # Direct hit: exact match on equipment or component imageName.
         if norm in norm_to_url:
             out[name] = norm_to_url[norm]
             continue
 
-        # 2. Progressive prefix — strip trailing words one by one, most-specific
-        #    first. This finds "Gauss Neuroptics" before "Gauss", so component
-        #    icons take priority over the parent warframe icon.
-        #    "Gauss Neuroptics Blueprint" → "Gauss Neuroptics" → "Gauss"
-        #    "Ruvox Glove Blueprint"      → "Ruvox Glove"      → "Ruvox"
-        words = norm.split()
+        # Progressive prefix for non-Blueprint names.
+        w = list(words)
         found = False
-        while len(words) > 1:
-            words.pop()
-            prefix = " ".join(words)
+        while len(w) > 1:
+            w.pop()
+            prefix = " ".join(w)
             if prefix in norm_to_url:
                 out[name] = norm_to_url[prefix]
                 found = True
@@ -179,8 +201,7 @@ def _build_image_map(
         if found:
             continue
 
-        # 3. Last resort: look up the parent equipment via part_equipment mapping
-        #    (values are display names, so normalize before lookup).
+        # Last resort: look up the parent equipment via part_equipment mapping.
         eq_disp = part_equipment.get(norm)
         if eq_disp:
             eq_n = items.normalize(eq_disp)
