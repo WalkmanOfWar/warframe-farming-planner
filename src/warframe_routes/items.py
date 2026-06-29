@@ -24,10 +24,20 @@ CACHE_TTL_SECONDS = 24 * 60 * 60
 # Relics appear in component drops with refinement suffixes; missionRewards uses
 # the base name. Strip "(Exceptional|Flawless|Radiant)" to match the two.
 _REFINEMENT_RE = re.compile(r"\s*\((?:Exceptional|Flawless|Radiant)\)\s*$")
+_REFINEMENT_NAME_RE = re.compile(r"\((Exceptional|Flawless|Radiant)\)")
 
 
 def base_relic_name(location: str) -> str:
     return _REFINEMENT_RE.sub("", location or "").strip()
+
+
+def relic_refinement(location: str) -> str:
+    """Refinement encoded in a relic drop location; bare name means Intact.
+
+    'Axi N3 Relic' -> 'Intact';  'Axi N3 Relic (Radiant)' -> 'Radiant'.
+    """
+    m = _REFINEMENT_NAME_RE.search(location or "")
+    return m.group(1) if m else "Intact"
 
 
 def relic_tier(relic_display: str) -> str:

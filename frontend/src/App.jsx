@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import {
-  AlertCircle, CheckCircle2, ChevronDown, ChevronRight,
+  AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock,
   Crosshair, Gem, Loader2, Lock, MapPin, ShoppingBag,
   Swords, Upload, X,
 } from 'lucide-react'
@@ -38,6 +38,27 @@ const TIER_COLOR = { Lith: C.lith, Meso: C.meso, Neo: C.neo, Axi: C.axi, Requiem
 
 function lines(text) {
   return text.split('\n').map((s) => s.trim()).filter(Boolean)
+}
+
+function fmtHours(minutes) {
+  if (minutes == null) return null
+  const m = Math.round(minutes)
+  const h = Math.floor(m / 60)
+  return h ? `${h}h ${m % 60}m` : `${m}m`
+}
+
+// Inline "~N runs · ~Xh Ym" effort tag; null when effort is unknown.
+function EffortTag({ runs, minutes }) {
+  if (runs == null || minutes == null) return null
+  return (
+    <span style={{
+      fontSize: 12, fontWeight: 600, color: C.accent,
+      background: C.accentFaint, border: `1px solid ${C.accentBorder}`,
+      borderRadius: 6, padding: '1px 8px', whiteSpace: 'nowrap',
+    }}>
+      ~{runs} runs · ~{fmtHours(minutes)}
+    </span>
+  )
 }
 
 /* ── Primitives ───────────────────────────────────────────── */
@@ -149,6 +170,27 @@ function Badge({ children, color, bg }) {
   )
 }
 
+function SortToggle({ value, onChange, options }) {
+  return (
+    <div style={{ display: 'inline-flex', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
+      {options.map(o => {
+        const active = o.id === value
+        return (
+          <button key={o.id} onClick={() => onChange(o.id)}
+            style={{
+              border: 'none', cursor: 'pointer', padding: '5px 10px', fontSize: 12,
+              fontWeight: 600, fontFamily: 'inherit',
+              background: active ? C.accentFaint : 'transparent',
+              color: active ? C.accent : C.muted,
+            }}>
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function TierBadge({ tier }) {
   const bg = TIER_COLOR[tier] || C.surface2
   return (
@@ -169,6 +211,7 @@ export default function App() {
   const [accountId, setAccountId] = useState('')
   const [nonce, setNonce] = useState('')
   const [wishlist, setWishlist] = useState('')
+  const [refinement, setRefinement] = useState('Intact')
   const [inventory, setInventory] = useState(null)
   const [invName, setInvName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -205,6 +248,7 @@ export default function App() {
         account_id: accountId.trim() || null,
         nonce: nonce.trim() || null,
         wishlist: wishlist.trim() ? lines(wishlist) : null,
+        refinement,
         inventory,
       }
       const res = await fetch(API, {
@@ -278,11 +322,39 @@ export default function App() {
             )}
             <input ref={fileRef} type="file" accept="application/json,.json"
               onChange={onInventory} style={{ display: 'none' }} />
+            <div style={{
+              display: 'flex', gap: 8, marginTop: 8, padding: '8px 12px',
+              background: C.accentFaint, border: `1px solid ${C.accentBorder}`,
+              borderRadius: 8, fontSize: 12, color: C.muted, lineHeight: 1.5,
+            }}>
+              <AlertCircle size={14} color={C.accent} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>
+                Account ID alone sees only <b>mastered</b> gear. To also subtract
+                loose &amp; unbuilt parts, add a <b>Nonce</b> above or upload{' '}
+                <b>inventory.json</b> — both come from{' '}
+                <a href="https://alecaframe.com" target="_blank" rel="noopener noreferrer"
+                  style={{ color: C.accent }}>AlecaFrame</a>{' '}or warframe-api-helper
+                while the game is running (no password; the nonce dies on game exit).
+              </span>
+            </div>
           </Field>
 
           <Field label="Wishlist" hint="optional — one item per line; empty = everything masterable">
             <TextArea value={wishlist} onChange={e => setWishlist(e.target.value)}
               placeholder={'Caliban Prime\nVolt Prime\nSibear'} rows={3} />
+          </Field>
+
+          <Field label="Relic refinement" hint="for Prime effort estimate — Radiant helps rares, hurts commons">
+            <select value={refinement} onChange={e => setRefinement(e.target.value)}
+              style={{
+                width: '100%', background: C.bg, color: C.text,
+                border: `1px solid ${C.border}`, borderRadius: 8,
+                padding: '10px 12px', fontSize: 14, outline: 'none',
+                boxSizing: 'border-box', fontFamily: 'inherit', cursor: 'pointer',
+              }}>
+              {['Intact', 'Exceptional', 'Flawless', 'Radiant'].map(o =>
+                <option key={o} value={o}>{o}</option>)}
+            </select>
           </Field>
 
           <Btn onClick={plan} disabled={loading} fullWidth>
@@ -376,6 +448,7 @@ function ItemIcon({ url, name, size = 28 }) {
 
 function Results({ r }) {
   const img = r.images || {}
+  const [sort, setSort] = useState('fast')
 
   if (!r.missing_equipment) {
     return (
@@ -390,6 +463,14 @@ function Results({ r }) {
 
   const nonPrimeParts = r.non_prime.reduce((n, m) => n + m.parts.length, 0)
 
+  // Sort key: "fast" = quickest missions first; "efficiency" = most parts per
+  // run first (best bang for the buck). Unknown-effort missions sink to the end.
+  const effOf = (m) => (m.runs ? m.parts.length / m.runs : -1)
+  const sortedNonPrime = [...r.non_prime].sort((a, b) =>
+    sort === 'efficiency'
+      ? effOf(b) - effOf(a)
+      : (a.minutes ?? Infinity) - (b.minutes ?? Infinity))
+
   return (
     <div>
       {/* Stats */}
@@ -400,14 +481,43 @@ function Results({ r }) {
         <StatCard icon={<Lock size={16} color={C.gold} />}    n={r.vaulted_part_count} label="vaulted" />
       </div>
 
+      {/* Estimated total time */}
+      {r.total_minutes != null && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          marginBottom: 16, padding: '12px 16px', textAlign: 'center',
+          background: C.accentFaint, border: `1px solid ${C.accentBorder}`, borderRadius: 12,
+        }}>
+          <Clock size={16} color={C.accent} />
+          <span style={{ fontSize: 14, color: C.text }}>
+            Estimated total: <b style={{ color: C.accent }}>~{fmtHours(r.total_minutes)}</b>
+            <span style={{ color: C.muted }}>
+              {' '}· rough, {r.refinement} relics, solo cracking
+            </span>
+          </span>
+        </div>
+      )}
+
       {/* Non-prime */}
       {r.non_prime.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
-          <SectionHeader icon={<MapPin size={15} color={C.gold} />}
-            title={`Non-Prime — ${r.non_prime.length} mission${r.non_prime.length !== 1 ? 's' : ''}`} />
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+            padding: '20px 20px 16px', borderBottom: `1px solid ${C.border}`,
+          }}>
+            <MapPin size={15} color={C.gold} />
+            <span style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>
+              {`Non-Prime — ${r.non_prime.length} mission${r.non_prime.length !== 1 ? 's' : ''}`}
+            </span>
+            <span style={{ flex: 1 }} />
+            <SortToggle value={sort} onChange={setSort} options={[
+              { id: 'fast', label: 'Fastest first' },
+              { id: 'efficiency', label: 'Most parts / run' },
+            ]} />
+          </div>
           <div style={{ padding: '0 20px 20px' }}>
-            {r.non_prime.map((m, i) => (
-              <div key={i}>
+            {sortedNonPrime.map((m, i) => (
+              <div key={m.node}>
                 {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
                 <MissionRow index={i + 1} mission={m} images={img} />
               </div>
@@ -428,7 +538,8 @@ function Results({ r }) {
                 <thead>
                   <tr style={{ background: C.surface2, borderBottom: `1px solid ${C.border}` }}>
                     <th style={{ textAlign: 'left', padding: '10px 16px', color: C.muted, fontWeight: 500 }}>Part</th>
-                    <th style={{ textAlign: 'left', padding: '10px 16px', color: C.muted, fontWeight: 500 }}>In-rotation relics</th>
+                    <th style={{ textAlign: 'left', padding: '10px 16px', color: C.muted, fontWeight: 500 }}>In-rotation relics (★ cheapest)</th>
+                    <th style={{ textAlign: 'right', padding: '10px 16px', color: C.muted, fontWeight: 500, whiteSpace: 'nowrap' }}>Effort</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -442,8 +553,19 @@ function Results({ r }) {
                       </td>
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {p.relics.map(rel => <Badge key={rel}>{rel}</Badge>)}
+                          {p.relics.map(rel => (
+                            <Badge key={rel}
+                              color={rel === p.best_relic ? C.gold : undefined}
+                              bg={rel === p.best_relic ? C.goldFaint : undefined}>
+                              {rel === p.best_relic ? `★ ${rel}` : rel}
+                            </Badge>
+                          ))}
                         </div>
+                      </td>
+                      <td style={{ padding: '10px 16px', verticalAlign: 'top', textAlign: 'right' }}>
+                        {p.runs != null
+                          ? <EffortTag runs={p.runs} minutes={p.minutes} />
+                          : <span style={{ fontSize: 12, color: C.muted }}>—</span>}
                       </td>
                     </tr>
                   ))}
@@ -552,14 +674,22 @@ function MissionRow({ index, mission, images = {} }) {
         {mission.game_mode && mission.game_mode !== 'Unknown' && (
           <Badge color={C.accent} bg={C.accentFaint}>{mission.game_mode}</Badge>
         )}
+        <span style={{ flex: 1 }} />
+        <EffortTag runs={mission.runs} minutes={mission.minutes} />
       </div>
       <div style={{ paddingLeft: 28, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {mission.parts.map(p => (
-          <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <ItemIcon url={images[p]} name={p} size={24} />
-            <span style={{ fontSize: 13, color: C.muted }}>{p}</span>
-          </div>
-        ))}
+        {mission.parts.map(p => {
+          const pr = (mission.part_runs || {})[p]
+          return (
+            <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ItemIcon url={images[p]} name={p} size={24} />
+              <span style={{ fontSize: 13, color: C.muted }}>{p}</span>
+              {pr != null && (
+                <span style={{ fontSize: 11, color: C.muted, opacity: 0.7 }}>~{pr} runs</span>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

@@ -35,6 +35,7 @@ class RouteRequest(BaseModel):
     have_parts: list[str] | None = None
     inventory: dict | None = None  # uploaded inventory.json contents
     refresh: bool = False
+    refinement: str = "Intact"     # relic refinement assumed for Prime effort
 
 
 def _norm(names) -> set[str]:
@@ -88,6 +89,7 @@ def route(req: RouteRequest) -> dict:
         owned_parts=owned_parts,
         items_data=items_data,
         mission_rewards=data.load_raw(force_refresh=req.refresh),
+        refinement=req.refinement,
     )
     return result.to_dict()
 

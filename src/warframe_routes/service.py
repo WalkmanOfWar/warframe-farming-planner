@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
-from . import acquisition, inventory, items, optimize
+from . import acquisition, effort, inventory, items, optimize
 
 # Best community spots to farm each relic tier (you farm a tier, not a relic).
 RELIC_TIER_GUIDE = {
@@ -28,6 +28,11 @@ class Mission:
     node: str
     game_mode: str
     parts: list[str]
+    # Expected effort (None = unobtainable / unknown chance). runs = expected
+    # reward rolls to collect every listed part; minutes = runs * mode time.
+    runs: float | None = None
+    minutes: float | None = None
+    part_runs: dict[str, float | None] = field(default_factory=dict)
 
 
 @dataclass
@@ -35,6 +40,12 @@ class PrimePart:
     part: str
     relics: list[str]
     tiers: list[str]
+    # Cheapest relic to crack for this part + its expected effort (solo).
+    best_relic: str | None = None
+    runs: float | None = None          # total: relic farming + cracking
+    minutes: float | None = None
+    relic_farm_runs: float | None = None
+    crack_runs: float | None = None
 
 
 @dataclass
@@ -60,9 +71,52 @@ class RouteResult:
     special_source: dict[str, list[str]] = field(default_factory=dict)
     # display_name → https://cdn.warframestat.us/img/<imageName>
     images: dict[str, str] = field(default_factory=dict)
+    # Expected-effort summary. refinement = relic refinement assumed for Primes.
+    refinement: str = "Intact"
+    total_minutes: float | None = None      # non-Prime missions + Prime parts
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def _runs(x: float | None) -> float | None:
+    """Round expected runs for output; map inf/unobtainable to None (JSON null)."""
+    if x is None or x == float("inf"):
+        return None
+    return round(x, 1)
+
+
+def _mins(x: float | None) -> float | None:
+    if x is None or x == float("inf"):
+        return None
+    return round(x, 1)
+
+
+def _best_prime_relic(plan, pnorm: str, relics_display: list[str],
+                      refinement: str) -> dict:
+    """Pick the relic that minimizes expected total runs for a Prime part.
+
+    For each candidate relic we need the part's in-relic chance at the chosen
+    refinement (falling back to Intact, then any) and the relic's best
+    acquisition node. Relics not currently farmable (no live source) are skipped.
+    """
+    best = {"relic": None, "total_runs": float("inf"), "minutes": float("inf"),
+            "relic_farm_runs": float("inf"), "crack_runs": float("inf")}
+    for rdisp in relics_display:
+        rnorm = items.normalize(rdisp)
+        refines = plan.part_relic_refine_chance.get(pnorm, {}).get(rnorm, {})
+        d = refines.get(refinement) or refines.get("Intact") or (
+            next(iter(refines.values()), 0.0))
+        src = plan.relic_source.get(rnorm)
+        if not d or not src:
+            continue
+        r_chance, r_mode = src
+        e = effort.prime_part_runs(d, r_chance)
+        minutes = (e["relic_farm_runs"] * effort.mode_minutes(r_mode)
+                   + e["crack_runs"] * effort.FISSURE_MINUTES)
+        if e["total_runs"] < best["total_runs"]:
+            best = {"relic": rdisp, "minutes": minutes, **e}
+    return best
 
 
 def plan_route(
@@ -72,10 +126,17 @@ def plan_route(
     owned_parts: set[str],
     items_data: list[dict],
     mission_rewards: dict,
+    refinement: str = "Intact",
 ) -> RouteResult:
-    """Assemble a full route plan from normalized ownership/target sets."""
+    """Assemble a full route plan from normalized ownership/target sets.
+
+    ``refinement`` is the relic refinement assumed when estimating Prime-part
+    effort (Intact/Exceptional/Flawless/Radiant); it does not change which
+    missions are selected, only the expected-runs/time figures.
+    """
     needed_equipment = inventory.compute_needed(want, owned)
-    result = RouteResult(missing_equipment=len(needed_equipment))
+    result = RouteResult(missing_equipment=len(needed_equipment),
+                         refinement=refinement)
     if not needed_equipment:
         return result
 
@@ -91,14 +152,36 @@ def plan_route(
 
     disp = lambda p: plan.part_display.get(p, p)
 
-    # Non-Prime: fewest-missions set cover over boss/mission nodes.
+    # Non-Prime: route by least expected *time*, not fewest missions. When a
+    # part drops at several nodes the optimizer picks the cheapest one (higher
+    # chance and/or faster mode), assigning each part to exactly one node.
     if plan.direct_parts:
-        route = optimize.optimize_route(plan.direct_nodes, plan.direct_parts)
-        result.non_prime = [
-            Mission(node=step.node.key, game_mode=step.node.game_mode,
-                    parts=sorted(disp(p) for p in step.covers))
-            for step in route.steps
-        ]
+        def node_cost(node, parts):
+            chances = plan.node_part_chance.get(node.key, {})
+            runs = effort.mission_runs([chances.get(p, 0.0) for p in parts])
+            if runs == float("inf"):
+                return float("inf")
+            return runs * effort.mode_minutes(node.game_mode)
+
+        route = optimize.optimize_by_cost(plan.direct_nodes, plan.direct_parts,
+                                          node_cost)
+        missions = []
+        for step in route.steps:
+            chances = plan.node_part_chance.get(step.node.key, {})
+            covered = sorted(step.covers, key=disp)
+            runs = effort.mission_runs([chances.get(p, 0.0) for p in covered])
+            minutes = (runs * effort.mode_minutes(step.node.game_mode)
+                       if runs != float("inf") else float("inf"))
+            missions.append(Mission(
+                node=step.node.key, game_mode=step.node.game_mode,
+                parts=[disp(p) for p in covered],
+                runs=_runs(runs), minutes=_mins(minutes),
+                part_runs={disp(p): _runs(effort.part_runs(chances.get(p, 0.0)))
+                           for p in covered},
+            ))
+        # Show the heaviest missions first so the time sink is obvious.
+        missions.sort(key=lambda m: (m.minutes is None, -(m.minutes or 0)))
+        result.non_prime = missions
         result.non_prime_uncovered = sorted(disp(p) for p in route.uncovered)
 
     # Prime: per-part relics + the tiers they belong to.
@@ -107,8 +190,15 @@ def plan_route(
         relics = sorted(plan.prime_part_relics[pnorm])
         part_tiers = sorted({items.relic_tier(r) for r in relics})
         tiers_needed.update(part_tiers)
-        result.prime.append(
-            PrimePart(part=disp(pnorm), relics=relics, tiers=part_tiers))
+        best = _best_prime_relic(plan, pnorm, relics, refinement)
+        result.prime.append(PrimePart(
+            part=disp(pnorm), relics=relics, tiers=part_tiers,
+            best_relic=best["relic"],
+            runs=_runs(best["total_runs"]),
+            minutes=_mins(best["minutes"]),
+            relic_farm_runs=_runs(best["relic_farm_runs"]),
+            crack_runs=_runs(best["crack_runs"]),
+        ))
 
     result.tiers = [
         TierGuide(tier=t, where=RELIC_TIER_GUIDE.get(t, GENERIC_TIER_HINT))
@@ -141,6 +231,12 @@ def plan_route(
     result.special_source = {src: sorted(set(parts)) for src, parts in sorted(src_map.items())}
 
     result.images = _build_image_map(items_data, result, plan.part_equipment)
+
+    # Grand total estimated time = non-Prime missions + Prime parts. Skip
+    # entries with unknown effort (None) rather than poisoning the sum.
+    total = sum(m.minutes for m in result.non_prime if m.minutes is not None)
+    total += sum(p.minutes for p in result.prime if p.minutes is not None)
+    result.total_minutes = round(total, 1) if total else None
     return result
 
 

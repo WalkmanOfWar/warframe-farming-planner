@@ -23,7 +23,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from .data import Node
-from .items import base_relic_name, normalize, parse_location
+from .items import base_relic_name, normalize, parse_location, relic_refinement
 
 
 @dataclass
@@ -41,6 +41,15 @@ class AcquisitionPlan:
     # norm part -> {raw location strings} for non-standard sources (Sanctuary Onslaught,
     # Plains of Eidolon, etc.) whose location format doesn't match planet/node pattern
 
+    # --- Drop chances for the expected-effort model (all chances are percent) ---
+    node_part_chance: dict[str, dict[str, float]] = field(default_factory=dict)
+    # node.key -> {norm part -> drop chance %} for non-Prime node drops
+    part_relic_refine_chance: dict[str, dict[str, dict[str, float]]] = field(
+        default_factory=dict)
+    # norm part -> norm relic -> {refinement -> in-relic chance %}
+    relic_source: dict[str, tuple[float, str]] = field(default_factory=dict)
+    # norm relic -> (best acquisition chance %, game mode of that node)
+
     def vaulted_equipment(self) -> set[str]:
         """Equipment whose every part is currently not farmable (fully vaulted)."""
         farmable = self.direct_parts | set(self.prime_part_relics)
@@ -53,15 +62,14 @@ class AcquisitionPlan:
         }
 
 
-def _relics_in_rewards(rewards) -> dict[str, str]:
-    """Map normalized base relic name -> display name for a node's rewards."""
+def _relic_drops(rewards):
+    """Yield (norm relic, display, chance %) for every relic in a node's rewards."""
     if isinstance(rewards, dict):
         lists = rewards.values()
     elif isinstance(rewards, list):
         lists = [rewards]
     else:
-        return {}
-    found: dict[str, str] = {}
+        return
     for lst in lists:
         if not isinstance(lst, list):
             continue
@@ -69,8 +77,7 @@ def _relics_in_rewards(rewards) -> dict[str, str]:
             name = r.get("itemName", "") if isinstance(r, dict) else ""
             if "Relic" in name:
                 base = base_relic_name(name)
-                found[normalize(base)] = base
-    return found
+                yield normalize(base), base, (r.get("chance") or 0.0)
 
 
 def build_plan(
@@ -89,6 +96,10 @@ def build_plan(
     equipment_with_parts: set[str] = set()
     routed_parts: set[str] = set()   # parts placed in prime or non-prime routes
     special_source_parts: dict[str, set[str]] = defaultdict(set)  # norm part -> {locations}
+    # Chance accumulators for the effort model (percent).
+    node_part_chance_acc: dict[tuple[str, str], dict[str, float]] = defaultdict(dict)
+    part_relic_chance_acc: dict[str, dict[str, dict[str, float]]] = defaultdict(
+        lambda: defaultdict(dict))
 
     def register(pnorm, disp, equip):
         part_display[pnorm] = disp
@@ -109,11 +120,13 @@ def build_plan(
                 loc = (drop or {}).get("location", "")
                 disp = drop.get("type") or f"{equip_name} {comp.get('name', '')}".strip()
                 pnorm = normalize(disp)
+                chance = (drop or {}).get("chance") or 0.0
                 if "Relic" in loc:
                     base = base_relic_name(loc)
                     rnorm = normalize(base)
                     part_relics[pnorm].add(rnorm)
                     relic_display[rnorm] = base
+                    part_relic_chance_acc[pnorm][rnorm][relic_refinement(loc)] = chance
                     register(pnorm, disp, equip_name)
                     routed_parts.add(pnorm)
                 else:
@@ -123,6 +136,9 @@ def build_plan(
                         slot = direct_node_acc.setdefault(
                             (planet, node_name), [planet, node_name, mode, set()])
                         slot[3].add(pnorm)
+                        # Keep the best (highest) chance if a part lists the node twice.
+                        prev = node_part_chance_acc[(planet, node_name)].get(pnorm, 0.0)
+                        node_part_chance_acc[(planet, node_name)][pnorm] = max(prev, chance)
                         register(pnorm, disp, equip_name)
                         routed_parts.add(pnorm)
                     elif loc.strip():
@@ -162,14 +178,23 @@ def build_plan(
                     equipment_with_parts.add(equip_name)
 
     # Which relics are currently in rotation (appear in the live drop tables)?
+    # Also record, per relic, the best (highest-chance) node to farm it and that
+    # node's game mode — needed to estimate relic-acquisition effort.
     available: dict[str, str] = {}
+    relic_source: dict[str, tuple[float, str]] = {}
     root = mission_rewards_raw.get("missionRewards", mission_rewards_raw)
     for planet_nodes in root.values() if isinstance(root, dict) else []:
         if not isinstance(planet_nodes, dict):
             continue
         for node_data in planet_nodes.values():
-            if isinstance(node_data, dict):
-                available.update(_relics_in_rewards(node_data.get("rewards", {})))
+            if not isinstance(node_data, dict):
+                continue
+            mode = node_data.get("gameMode", "Unknown")
+            for rnorm, display, chance in _relic_drops(node_data.get("rewards", {})):
+                available[rnorm] = display
+                prev = relic_source.get(rnorm)
+                if prev is None or chance > prev[0]:
+                    relic_source[rnorm] = (chance, mode)
 
     # Prime parts: keep only relics currently in rotation; vaulted parts split off.
     prime_part_relics: dict[str, set[str]] = {}
@@ -186,6 +211,15 @@ def build_plan(
         Node(planet=p, name=n, game_mode=m, items=frozenset(parts))
         for p, n, m, parts in direct_node_acc.values()
     ]
+    # Re-key node->part chances by Node.key ("planet - name") for the service.
+    node_part_chance = {
+        f"{planet} - {node_name}": dict(chances)
+        for (planet, node_name), chances in node_part_chance_acc.items()
+    }
+    part_relic_refine_chance = {
+        p: {r: dict(refs) for r, refs in relics.items()}
+        for p, relics in part_relic_chance_acc.items()
+    }
 
     no_mission_source = {
         index[e]["name"]
@@ -203,4 +237,7 @@ def build_plan(
         no_mission_source=no_mission_source,
         orphan_parts=orphan_parts,
         special_source_parts=dict(special_source_parts),
+        node_part_chance=node_part_chance,
+        part_relic_refine_chance=part_relic_refine_chance,
+        relic_source=relic_source,
     )
