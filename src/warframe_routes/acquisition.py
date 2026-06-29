@@ -37,6 +37,9 @@ class AcquisitionPlan:
     no_mission_source: set[str] = field(default_factory=set)   # equipment (display)
     orphan_parts: dict[str, str] = field(default_factory=dict) # norm -> display; parts
     # with /Recipes/ but no mission/relic drop (e.g. warframe main BPs from Market)
+    special_source_parts: dict[str, set[str]] = field(default_factory=dict)
+    # norm part -> {raw location strings} for non-standard sources (Sanctuary Onslaught,
+    # Plains of Eidolon, etc.) whose location format doesn't match planet/node pattern
 
     def vaulted_equipment(self) -> set[str]:
         """Equipment whose every part is currently not farmable (fully vaulted)."""
@@ -85,6 +88,7 @@ def build_plan(
     direct_node_acc: dict[tuple[str, str], list] = {}     # (planet,node)->[p,n,m,parts]
     equipment_with_parts: set[str] = set()
     routed_parts: set[str] = set()   # parts placed in prime or non-prime routes
+    special_source_parts: dict[str, set[str]] = defaultdict(set)  # norm part -> {locations}
 
     def register(pnorm, disp, equip):
         part_display[pnorm] = disp
@@ -114,14 +118,20 @@ def build_plan(
                     routed_parts.add(pnorm)
                 else:
                     parsed = parse_location(loc)
-                    if not parsed:
-                        continue
-                    planet, node_name, mode = parsed
-                    slot = direct_node_acc.setdefault(
-                        (planet, node_name), [planet, node_name, mode, set()])
-                    slot[3].add(pnorm)
-                    register(pnorm, disp, equip_name)
-                    routed_parts.add(pnorm)
+                    if parsed:
+                        planet, node_name, mode = parsed
+                        slot = direct_node_acc.setdefault(
+                            (planet, node_name), [planet, node_name, mode, set()])
+                        slot[3].add(pnorm)
+                        register(pnorm, disp, equip_name)
+                        routed_parts.add(pnorm)
+                    elif loc.strip():
+                        # Non-standard source: Sanctuary Onslaught, Plains of Eidolon,
+                        # Elite Sanctuary Onslaught, etc. — has a location string but not
+                        # in planet/node format. Track for display; don't try to route.
+                        special_source_parts[pnorm].add(loc.strip())
+                        register(pnorm, disp, equip_name)
+                        routed_parts.add(pnorm)
 
     # Detect orphan parts: have /Recipes/ and zero drop locations at all.
     # Classic example: warframe main blueprints sold only in the Market.
@@ -192,4 +202,5 @@ def build_plan(
         not_farmable=not_farmable,
         no_mission_source=no_mission_source,
         orphan_parts=orphan_parts,
+        special_source_parts=dict(special_source_parts),
     )
