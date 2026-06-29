@@ -127,11 +127,11 @@ The pipeline is a staged flow, one module per stage under `src/warframe_routes/`
 
 ### Cross-cutting invariant: name normalization
 
-Item names are matched via case-folded, whitespace-trimmed normalization
-(`name.strip().casefold()`). It is currently duplicated as `_normalize` in
-`inventory.py`/`optimize.py` and `normalize` in `items.py` (re-exported through
-`acquisition`). **If you change it, change every copy** or matching silently
-breaks. In `optimize.py`, "needed" names are already normalized; `Node.items` are
+Item names are matched via case-folded, whitespace-trimmed normalization.
+**`items.normalize` is the single source of truth** (`(name or "").strip().
+casefold()`); `inventory.py` and `optimize.py` import it as `_normalize`, and
+`acquisition`/`service` use `items.normalize` directly. Change it in one place.
+In `optimize.py`, "needed" names are already normalized; `Node.items` are
 normalized on comparison (so feeding already-normalized part names is idempotent).
 
 ## Conventions

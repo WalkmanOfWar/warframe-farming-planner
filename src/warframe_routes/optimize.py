@@ -6,8 +6,8 @@ heuristic: repeatedly take the node that covers the most still-uncovered items.
 The greedy algorithm is within a ln(n)+1 factor of optimal, which is more than
 good enough for choosing farming routes.
 
-Item names from the drop tables are matched against needed items using the same
-case-folded normalization as :mod:`warframe_routes.inventory`.
+Item names from the drop tables are matched against needed items using the
+shared case-folded normalization from :mod:`warframe_routes.items`.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .data import Node
+# Single source of truth for name matching, shared across the package.
+from .items import normalize as _normalize
 
 
 @dataclass
@@ -31,10 +33,6 @@ class Route:
     @property
     def mission_count(self) -> int:
         return len(self.steps)
-
-
-def _normalize(name: str) -> str:
-    return name.strip().casefold()
 
 
 def _node_coverage(node: Node, needed: set[str]) -> frozenset[str]:
