@@ -171,15 +171,14 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                 click.echo(f"     - {part}{tail}")
 
     if result.prime:
-        click.echo(f"\nPrime — {len(result.prime)} part(s), {refinement} relics "
+        click.echo(f"\nPrime — crack {len(result.prime)} relic(s) for "
+                   f"{result.prime_part_count} part(s), {refinement} "
                    "(farm the relic's TIER, then crack it at a void fissure):\n")
-        for pp in result.prime:
-            click.echo(f"  {pp.part}{_effort(pp.runs, pp.minutes)}")
-            if pp.best_relic:
-                click.echo(f"      best: {pp.best_relic}  "
-                           f"(farm ~{pp.relic_farm_runs} + crack ~{pp.crack_runs} runs)")
-            else:
-                click.echo(f"      relics: {', '.join(pp.relics)}")
+        for pr in result.prime:
+            cracks = f"  (~{pr.cracks} cracks)" if pr.cracks is not None else ""
+            click.echo(f"  {pr.relic}{_effort(pr.runs, pr.minutes)}{cracks}")
+            for part in pr.parts:
+                click.echo(f"     - {part}")
         click.echo("\n  Relic tiers to farm:")
         for t in result.tiers:
             click.echo(f"    {t.tier}: {t.where}")
