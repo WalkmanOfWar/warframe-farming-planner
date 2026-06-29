@@ -1,22 +1,24 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg:          #0e1116;
-  --color-surface:     #161b22;
-  --color-surface2:    #1c232d;
-  --color-border:      #30363d;
-  --color-gold:        #d4b35a;
-  --color-gold-dim:    #a8893e;
-  --color-accent:      #4aa3df;
-  --color-text:        #e6edf3;
-  --color-muted:       #8b949e;
-  --color-error:       #f85149;
-  --color-success:     #3fb950;
-  --color-lith:        #3a5a40;
-  --color-meso:        #4a4a8a;
-  --color-neo:         #6a4a8a;
-  --color-axi:         #8a6a3a;
-  --color-requiem:     #6a2a2a;
+  --color-bg:        #090d12;
+  --color-surface:   #0f1923;
+  --color-surface2:  #182030;
+  --color-border:    #2a3a4a;
+  --color-gold:      #d4b35a;
+  --color-gold-dim:  #a8893e;
+  --color-gold-faint: rgba(212,179,90,0.08);
+  --color-accent:    #4aa3df;
+  --color-accent-faint: rgba(74,163,223,0.12);
+  --color-text:      #e6edf3;
+  --color-muted:     #7a8a9a;
+  --color-error:     #f85149;
+  --color-success:   #3fb950;
+  --color-lith:      #2d5c35;
+  --color-meso:      #3a3a7a;
+  --color-neo:       #5a3a7a;
+  --color-axi:       #7a5a2a;
+  --color-requiem:   #5a2a2a;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -29,3 +31,10 @@ body {
   line-height: 1.5;
   min-height: 100vh;
 }
+
+/* Shimmer animation for loading button */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.animate-spin { animation: spin 1s linear infinite; }
