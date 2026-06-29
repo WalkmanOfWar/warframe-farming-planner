@@ -322,6 +322,21 @@ export default function App() {
             )}
             <input ref={fileRef} type="file" accept="application/json,.json"
               onChange={onInventory} style={{ display: 'none' }} />
+            <div style={{
+              display: 'flex', gap: 8, marginTop: 8, padding: '8px 12px',
+              background: C.accentFaint, border: `1px solid ${C.accentBorder}`,
+              borderRadius: 8, fontSize: 12, color: C.muted, lineHeight: 1.5,
+            }}>
+              <AlertCircle size={14} color={C.accent} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>
+                Account ID alone sees only <b>mastered</b> gear. To also subtract
+                loose &amp; unbuilt parts, add a <b>Nonce</b> above or upload{' '}
+                <b>inventory.json</b> — both come from{' '}
+                <a href="https://alecaframe.com" target="_blank" rel="noopener noreferrer"
+                  style={{ color: C.accent }}>AlecaFrame</a>{' '}or warframe-api-helper
+                while the game is running (no password; the nonce dies on game exit).
+              </span>
+            </div>
           </Field>
 
           <Field label="Wishlist" hint="optional — one item per line; empty = everything masterable">
@@ -433,7 +448,7 @@ function ItemIcon({ url, name, size = 28 }) {
 
 function Results({ r }) {
   const img = r.images || {}
-  const [sort, setSort] = useState('time')
+  const [sort, setSort] = useState('fast')
 
   if (!r.missing_equipment) {
     return (
@@ -448,13 +463,13 @@ function Results({ r }) {
 
   const nonPrimeParts = r.non_prime.reduce((n, m) => n + m.parts.length, 0)
 
-  // Sort key: "time" = biggest time sink first; "efficiency" = most parts per
+  // Sort key: "fast" = quickest missions first; "efficiency" = most parts per
   // run first (best bang for the buck). Unknown-effort missions sink to the end.
   const effOf = (m) => (m.runs ? m.parts.length / m.runs : -1)
   const sortedNonPrime = [...r.non_prime].sort((a, b) =>
     sort === 'efficiency'
       ? effOf(b) - effOf(a)
-      : (b.minutes ?? -1) - (a.minutes ?? -1))
+      : (a.minutes ?? Infinity) - (b.minutes ?? Infinity))
 
   return (
     <div>
@@ -496,7 +511,7 @@ function Results({ r }) {
             </span>
             <span style={{ flex: 1 }} />
             <SortToggle value={sort} onChange={setSort} options={[
-              { id: 'time', label: 'Longest first' },
+              { id: 'fast', label: 'Fastest first' },
               { id: 'efficiency', label: 'Most parts / run' },
             ]} />
           </div>
