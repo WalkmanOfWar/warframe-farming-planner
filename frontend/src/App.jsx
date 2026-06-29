@@ -5,22 +5,165 @@ import {
   Swords, Upload, X,
 } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
-import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
-
 const API = '/api/route'
+
+const C = {
+  bg:          '#090d12',
+  surface:     '#0f1923',
+  surface2:    '#182030',
+  border:      '#2a3a4a',
+  gold:        '#d4b35a',
+  goldDim:     '#a8893e',
+  goldFaint:   'rgba(212,179,90,0.08)',
+  goldBorder:  'rgba(212,179,90,0.3)',
+  accent:      '#4aa3df',
+  accentFaint: 'rgba(74,163,223,0.12)',
+  accentBorder:'rgba(74,163,223,0.3)',
+  text:        '#e6edf3',
+  muted:       '#7a8a9a',
+  error:       '#f85149',
+  errorFaint:  'rgba(248,81,73,0.08)',
+  errorBorder: 'rgba(248,81,73,0.3)',
+  success:     '#3fb950',
+  successFaint:'rgba(63,185,80,0.08)',
+  successBorder:'rgba(63,185,80,0.3)',
+  lith:        '#2d5c35',
+  meso:        '#3a3a7a',
+  neo:         '#5a3a7a',
+  axi:         '#7a5a2a',
+  requiem:     '#5a2a2a',
+}
+
+const TIER_COLOR = { Lith: C.lith, Meso: C.meso, Neo: C.neo, Axi: C.axi, Requiem: C.requiem }
 
 function lines(text) {
   return text.split('\n').map((s) => s.trim()).filter(Boolean)
 }
 
-const TIER_VARIANT = { Lith: 'lith', Meso: 'meso', Neo: 'neo', Axi: 'axi', Requiem: 'requiem' }
+/* ── Primitives ───────────────────────────────────────────── */
+
+function Card({ children, accent = false, style = {} }) {
+  return (
+    <div style={{
+      background: C.surface,
+      border: `1px solid ${accent ? C.goldBorder : C.border}`,
+      borderTop: accent ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
+      borderRadius: 14,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+      ...style,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function Btn({ children, onClick, disabled, fullWidth = false, variant = 'gold' }) {
+  const [hov, setHov] = useState(false)
+  const base = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    gap: 8, border: 'none', borderRadius: 10, fontWeight: 700,
+    fontSize: 15, cursor: disabled ? 'default' : 'pointer',
+    padding: '12px 20px', transition: 'opacity .15s',
+    opacity: disabled ? 0.5 : hov ? 0.88 : 1,
+    width: fullWidth ? '100%' : undefined,
+  }
+  const colors = variant === 'gold'
+    ? { background: C.gold, color: '#111' }
+    : { background: 'transparent', border: `1px solid ${C.border}`, color: C.text }
+  return (
+    <button
+      onClick={onClick} disabled={disabled}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ ...base, ...colors }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function TextInput({ value, onChange, placeholder }) {
+  const [focus, setFocus] = useState(false)
+  return (
+    <input
+      value={value} onChange={onChange} placeholder={placeholder}
+      spellCheck={false}
+      onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+      style={{
+        width: '100%', background: C.bg, color: C.text,
+        border: `1px solid ${focus ? C.accent : C.border}`,
+        borderRadius: 8, padding: '10px 12px', fontSize: 14,
+        outline: 'none', boxSizing: 'border-box',
+        transition: 'border-color .15s',
+      }}
+    />
+  )
+}
+
+function TextArea({ value, onChange, placeholder, rows = 3 }) {
+  const [focus, setFocus] = useState(false)
+  return (
+    <textarea
+      value={value} onChange={onChange} placeholder={placeholder} rows={rows}
+      onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+      style={{
+        width: '100%', background: C.bg, color: C.text,
+        border: `1px solid ${focus ? C.accent : C.border}`,
+        borderRadius: 8, padding: '10px 12px', fontSize: 14,
+        outline: 'none', boxSizing: 'border-box', resize: 'vertical',
+        fontFamily: 'inherit', transition: 'border-color .15s',
+      }}
+    />
+  )
+}
+
+function FieldLabel({ label, hint }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+      <span style={{ fontWeight: 600, fontSize: 14, color: C.text }}>{label}</span>
+      {hint && <span style={{ fontSize: 12, color: C.muted }}>{hint}</span>}
+    </div>
+  )
+}
+
+function Field({ label, hint, children }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <FieldLabel label={label} hint={hint} />
+      {children}
+    </div>
+  )
+}
+
+function Badge({ children, color, bg }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      background: bg || C.surface2,
+      color: color || C.muted,
+      border: `1px solid ${C.border}`,
+      borderRadius: 6, padding: '2px 8px',
+      fontSize: 12, fontWeight: 600,
+    }}>
+      {children}
+    </span>
+  )
+}
+
+function TierBadge({ tier }) {
+  const bg = TIER_COLOR[tier] || C.surface2
+  return (
+    <span style={{
+      display: 'inline-block', minWidth: 64, textAlign: 'center',
+      background: bg, color: '#fff',
+      borderRadius: 6, padding: '2px 10px',
+      fontSize: 12, fontWeight: 700,
+    }}>
+      {tier}
+    </span>
+  )
+}
+
+/* ── Main App ─────────────────────────────────────────────── */
 
 export default function App() {
   const [accountId, setAccountId] = useState('')
@@ -80,119 +223,91 @@ export default function App() {
   }
 
   return (
-    <div style={{ background: 'var(--color-bg)' }} className="min-h-screen">
-      <div className="max-w-2xl mx-auto px-5 py-10 pb-20">
+    <div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <div style={{ maxWidth: 680, margin: '0 auto', padding: '48px 20px 80px' }}>
 
         {/* Header */}
-        <header className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center size-14 rounded-2xl mb-4"
-               style={{ background: 'var(--color-gold-faint)', border: '1px solid rgba(212,179,90,0.25)' }}>
-            <Swords className="size-7" style={{ color: 'var(--color-gold)' }} />
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 56, height: 56, borderRadius: 16, marginBottom: 16,
+            background: C.goldFaint, border: `1px solid ${C.goldBorder}`,
+          }}>
+            <Swords size={26} color={C.gold} />
           </div>
-          <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--color-gold)' }}>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: C.gold, letterSpacing: '.3px' }}>
             Warframe Farming Planner
           </h1>
-          <p className="text-sm" style={{ color: 'var(--color-muted)' }}>
+          <p style={{ margin: '8px 0 0', fontSize: 14, color: C.muted }}>
             Plan the fewest missions to farm everything you're still missing.
           </p>
-        </header>
+        </div>
 
         {/* Form card */}
-        <Card accent className="mb-6">
-          <CardHeader>
-            <CardTitle>
-              <Crosshair className="size-4" />
-              Your profile
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
+        <Card accent style={{ marginBottom: 24, padding: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 24 }}>
+            <Crosshair size={16} color={C.gold} />
+            <span style={{ fontWeight: 700, fontSize: 16, color: C.gold }}>Your profile</span>
+          </div>
 
-            <Field label="Account ID" hint="24-hex gid cookie, not username">
-              <Input
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-                placeholder="e.g. 692f1267db467ef12005e8f7"
-                spellCheck={false}
-              />
-            </Field>
+          <Field label="Account ID" hint="24-hex gid cookie, not username">
+            <TextInput value={accountId} onChange={e => setAccountId(e.target.value)}
+              placeholder="e.g. 692f1267db467ef12005e8f7" />
+          </Field>
 
-            <Field label="Nonce" hint="optional — full inventory incl. loose parts">
-              <Input
-                value={nonce}
-                onChange={(e) => setNonce(e.target.value)}
-                placeholder="from warframe-api-helper with the game running"
-                spellCheck={false}
-              />
-            </Field>
+          <Field label="Nonce" hint="optional — full inventory incl. loose parts">
+            <TextInput value={nonce} onChange={e => setNonce(e.target.value)}
+              placeholder="from warframe-api-helper with the game running" />
+          </Field>
 
-            <Field label="Inventory file" hint="optional — inventory.json from AlecaFrame / api-helper">
-              {invName ? (
-                <div className="flex items-center gap-3 rounded-lg px-4 py-3 text-sm"
-                     style={{ background: 'rgba(63,185,80,0.08)', border: '1px solid rgba(63,185,80,0.3)' }}>
-                  <CheckCircle2 className="size-4 shrink-0" style={{ color: 'var(--color-success)' }} />
-                  <span className="flex-1 truncate" style={{ color: 'var(--color-text)' }}>{invName}</span>
-                  <button onClick={clearInventory} className="transition-opacity hover:opacity-70">
-                    <X className="size-4" style={{ color: 'var(--color-muted)' }} />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-5 text-sm transition-colors cursor-pointer"
-                  style={{
-                    borderColor: 'var(--color-border)',
-                    color: 'var(--color-muted)',
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.borderColor = 'var(--color-accent)'
-                    e.currentTarget.style.color = 'var(--color-accent)'
-                    e.currentTarget.style.background = 'var(--color-accent-faint)'
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.borderColor = 'var(--color-border)'
-                    e.currentTarget.style.color = 'var(--color-muted)'
-                    e.currentTarget.style.background = 'transparent'
-                  }}
-                >
-                  <Upload className="size-4" />
-                  Click to upload inventory.json
+          <Field label="Inventory file" hint="optional — inventory.json from AlecaFrame / api-helper">
+            {invName ? (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                background: C.successFaint, border: `1px solid ${C.successBorder}`,
+                borderRadius: 8, padding: '10px 14px', fontSize: 14,
+              }}>
+                <CheckCircle2 size={16} color={C.success} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text }}>{invName}</span>
+                <button onClick={clearInventory} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
+                  <X size={16} color={C.muted} />
                 </button>
-              )}
-              <input ref={fileRef} type="file" accept="application/json,.json"
-                     onChange={onInventory} className="hidden" />
-            </Field>
-
-            <Field label="Wishlist" hint="optional — one item per line; empty = everything masterable">
-              <Textarea
-                rows={3}
-                value={wishlist}
-                onChange={(e) => setWishlist(e.target.value)}
-                placeholder={'Caliban Prime\nVolt Prime\nSibear'}
-              />
-            </Field>
-
-            <Button onClick={plan} disabled={loading} size="lg" className="w-full mt-2">
-              {loading
-                ? <><Loader2 className="size-4 animate-spin" /> Planning…</>
-                : <><Crosshair className="size-4" /> Plan route</>}
-            </Button>
-
-            {error && (
-              <div className="flex items-start gap-3 rounded-lg px-4 py-3 text-sm"
-                   style={{ background: 'rgba(248,81,73,0.08)', border: '1px solid rgba(248,81,73,0.3)', color: 'var(--color-error)' }}>
-                <AlertCircle className="size-4 mt-0.5 shrink-0" />
-                {error}
               </div>
+            ) : (
+              <UploadZone onClick={() => fileRef.current?.click()} />
             )}
-          </CardContent>
+            <input ref={fileRef} type="file" accept="application/json,.json"
+              onChange={onInventory} style={{ display: 'none' }} />
+          </Field>
+
+          <Field label="Wishlist" hint="optional — one item per line; empty = everything masterable">
+            <TextArea value={wishlist} onChange={e => setWishlist(e.target.value)}
+              placeholder={'Caliban Prime\nVolt Prime\nSibear'} rows={3} />
+          </Field>
+
+          <Btn onClick={plan} disabled={loading} fullWidth>
+            {loading
+              ? <><SpinIcon />&nbsp;Planning…</>
+              : <><Crosshair size={16} />&nbsp;Plan route</>}
+          </Btn>
+
+          {error && (
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 14,
+              background: C.errorFaint, border: `1px solid ${C.errorBorder}`,
+              borderRadius: 8, padding: '10px 14px', fontSize: 14, color: C.error,
+            }}>
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+              {error}
+            </div>
+          )}
         </Card>
 
         {result && <Results r={result} />}
 
-        <footer className="text-center text-xs mt-10" style={{ color: 'var(--color-muted)' }}>
+        <footer style={{ textAlign: 'center', fontSize: 12, color: C.muted, marginTop: 32 }}>
           Unofficial fan tool · Data from{' '}
-          <a href="https://docs.warframestat.us" style={{ color: 'var(--color-accent)' }}
-             className="hover:underline">WFCD / warframestat</a>
+          <a href="https://docs.warframestat.us" style={{ color: C.accent }}>WFCD / warframestat</a>
           {' '}· Not affiliated with Digital Extremes
         </footer>
       </div>
@@ -200,18 +315,35 @@ export default function App() {
   )
 }
 
-/* ── Small helpers ────────────────────────────────────────── */
-
-function Field({ label, hint, children }) {
+function UploadZone({ onClick }) {
+  const [hov, setHov] = useState(false)
   return (
-    <div className="space-y-2">
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <Label style={{ color: 'var(--color-text)', fontWeight: 600 }}>{label}</Label>
-        {hint && <span className="text-xs" style={{ color: 'var(--color-muted)' }}>{hint}</span>}
-      </div>
-      {children}
-    </div>
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'center',
+        gap: 8, borderRadius: 8, padding: '18px 16px', fontSize: 14, cursor: 'pointer',
+        border: `2px dashed ${hov ? C.accent : C.border}`,
+        color: hov ? C.accent : C.muted,
+        background: hov ? C.accentFaint : 'transparent',
+        transition: 'all .15s', boxSizing: 'border-box',
+      }}
+    >
+      <Upload size={16} />
+      Click to upload inventory.json
+    </button>
   )
+}
+
+function SpinIcon() {
+  const [deg, setDeg] = useState(0)
+  React.useEffect(() => {
+    const id = setInterval(() => setDeg(d => d + 6), 16)
+    return () => clearInterval(id)
+  }, [])
+  return <Loader2 size={16} style={{ transform: `rotate(${deg}deg)` }} />
 }
 
 /* ── Results ─────────────────────────────────────────────── */
@@ -219,11 +351,11 @@ function Field({ label, hint, children }) {
 function Results({ r }) {
   if (!r.missing_equipment) {
     return (
-      <Card className="mb-4">
-        <CardContent className="pt-6 flex items-center gap-3">
-          <CheckCircle2 className="size-5" style={{ color: 'var(--color-success)' }} />
+      <Card style={{ padding: 24, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <CheckCircle2 size={20} color={C.success} />
           <span>Nothing to farm — you own everything in the target set.</span>
-        </CardContent>
+        </div>
       </Card>
     )
   }
@@ -231,68 +363,57 @@ function Results({ r }) {
   const nonPrimeParts = r.non_prime.reduce((n, m) => n + m.parts.length, 0)
 
   return (
-    <div className="space-y-4">
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard icon={<Swords className="size-4" />}  n={r.missing_equipment} label="missing items" />
-        <StatCard icon={<MapPin className="size-4" />}  n={nonPrimeParts}        label="non-prime parts" />
-        <StatCard icon={<Gem className="size-4" />}     n={r.prime.length}       label="prime parts" />
-        <StatCard icon={<Lock className="size-4" />}    n={r.vaulted_part_count} label="vaulted parts" />
+    <div>
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+        <StatCard icon={<Swords size={16} color={C.gold} />}  n={r.missing_equipment} label="missing" />
+        <StatCard icon={<MapPin size={16} color={C.gold} />}  n={nonPrimeParts}        label="non-prime" />
+        <StatCard icon={<Gem size={16} color={C.gold} />}     n={r.prime.length}       label="prime" />
+        <StatCard icon={<Lock size={16} color={C.gold} />}    n={r.vaulted_part_count} label="vaulted" />
       </div>
 
-      {/* Non-prime missions */}
+      {/* Non-prime */}
       {r.non_prime.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <MapPin className="size-4" />
-              Non-Prime — {r.non_prime.length} mission{r.non_prime.length !== 1 ? 's' : ''}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 space-y-0">
+        <Card style={{ marginBottom: 16 }}>
+          <SectionHeader icon={<MapPin size={15} color={C.gold} />}
+            title={`Non-Prime — ${r.non_prime.length} mission${r.non_prime.length !== 1 ? 's' : ''}`} />
+          <div style={{ padding: '0 20px 20px' }}>
             {r.non_prime.map((m, i) => (
               <div key={i}>
-                {i > 0 && <Separator />}
+                {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
                 <MissionRow index={i + 1} mission={m} />
               </div>
             ))}
-          </CardContent>
+          </div>
         </Card>
       )}
 
-      {/* Prime parts */}
+      {/* Prime */}
       {r.prime.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <Gem className="size-4" />
-              Prime — {r.prime.length} part{r.prime.length !== 1 ? 's' : ''}
-            </CardTitle>
-            <p className="text-xs mt-1" style={{ color: 'var(--color-muted)' }}>
-              Farm a relic's <strong style={{ color: 'var(--color-text)' }}>tier</strong>, then crack it at a void fissure.
-            </p>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--color-border)' }}>
-              <table className="w-full text-sm">
+        <Card style={{ marginBottom: 16 }}>
+          <SectionHeader icon={<Gem size={15} color={C.gold} />}
+            title={`Prime — ${r.prime.length} part${r.prime.length !== 1 ? 's' : ''}`}
+            sub="Farm a relic's tier, then crack it at a void fissure." />
+          <div style={{ padding: '0 20px 20px' }}>
+            <div style={{
+              border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden',
+            }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface2)' }}>
-                    <th className="text-left px-4 py-2.5 font-medium" style={{ color: 'var(--color-muted)' }}>Part</th>
-                    <th className="text-left px-4 py-2.5 font-medium" style={{ color: 'var(--color-muted)' }}>In-rotation relics</th>
+                  <tr style={{ background: C.surface2, borderBottom: `1px solid ${C.border}` }}>
+                    <th style={{ textAlign: 'left', padding: '10px 16px', color: C.muted, fontWeight: 500 }}>Part</th>
+                    <th style={{ textAlign: 'left', padding: '10px 16px', color: C.muted, fontWeight: 500 }}>In-rotation relics</th>
                   </tr>
                 </thead>
                 <tbody>
                   {r.prime.map((p, i) => (
-                    <tr key={p.part} style={i > 0 ? { borderTop: '1px solid var(--color-border)' } : {}}>
-                      <td className="px-4 py-3 font-medium align-top whitespace-nowrap pr-6"
-                          style={{ color: 'var(--color-text)' }}>
+                    <tr key={p.part} style={i > 0 ? { borderTop: `1px solid ${C.border}` } : {}}>
+                      <td style={{ padding: '10px 16px', color: C.text, fontWeight: 600, whiteSpace: 'nowrap', paddingRight: 24, verticalAlign: 'top' }}>
                         {p.part}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1.5">
-                          {p.relics.map((rel) => (
-                            <Badge key={rel} variant="relic">{rel}</Badge>
-                          ))}
+                      <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {p.relics.map(rel => <Badge key={rel}>{rel}</Badge>)}
                         </div>
                       </td>
                     </tr>
@@ -302,46 +423,32 @@ function Results({ r }) {
             </div>
 
             {r.tiers.length > 0 && (
-              <div className="mt-5">
-                <p className="text-xs font-semibold uppercase tracking-widest mb-3"
-                   style={{ color: 'var(--color-muted)' }}>
+              <div style={{ marginTop: 20 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.muted, marginBottom: 10 }}>
                   Relic tiers to farm
-                </p>
-                <div className="space-y-2">
-                  {r.tiers.map((t) => (
-                    <div key={t.tier} className="flex items-center gap-3 text-sm">
-                      <Badge variant={TIER_VARIANT[t.tier] ?? 'default'}
-                             className="min-w-[58px] justify-center">
-                        {t.tier}
-                      </Badge>
-                      <span style={{ color: 'var(--color-muted)' }}>{t.where}</span>
-                    </div>
-                  ))}
                 </div>
+                {r.tiers.map(t => (
+                  <div key={t.tier} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                    <TierBadge tier={t.tier} />
+                    <span style={{ color: C.muted, fontSize: 14 }}>{t.where}</span>
+                  </div>
+                ))}
               </div>
             )}
-          </CardContent>
+          </div>
         </Card>
       )}
 
-      {/* Vaulted */}
       {r.vaulted_equipment.length > 0 && (
-        <CollapsibleCard
-          icon={<Lock className="size-4" />}
-          title="Vaulted / not currently farmable"
-          count={r.vaulted_equipment.length}
-        >
+        <CollapsibleCard icon={<Lock size={15} color={C.muted} />}
+          title="Vaulted / not currently farmable" count={r.vaulted_equipment.length}>
           <ItemGrid items={r.vaulted_equipment} />
         </CollapsibleCard>
       )}
 
-      {/* No mission source */}
       {r.no_mission_source.length > 0 && (
-        <CollapsibleCard
-          icon={<ShoppingBag className="size-4" />}
-          title="Market / clan / syndicate / lich / Baro / quest"
-          count={r.no_mission_source.length}
-        >
+        <CollapsibleCard icon={<ShoppingBag size={15} color={C.muted} />}
+          title="Market / clan / syndicate / lich / Baro / quest" count={r.no_mission_source.length}>
           <ItemGrid items={r.no_mission_source} />
         </CollapsibleCard>
       )}
@@ -351,75 +458,95 @@ function Results({ r }) {
 
 function StatCard({ icon, n, label }) {
   return (
-    <div className="rounded-xl p-4 text-center"
-         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-      <div className="flex justify-center mb-1.5" style={{ color: 'var(--color-gold)' }}>{icon}</div>
-      <div className="text-2xl font-bold" style={{ color: 'var(--color-gold)' }}>{n}</div>
-      <div className="text-xs mt-0.5" style={{ color: 'var(--color-muted)' }}>{label}</div>
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
+      padding: 16, textAlign: 'center',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>{icon}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: C.gold, lineHeight: 1 }}>{n}</div>
+      <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{label}</div>
+    </div>
+  )
+}
+
+function SectionHeader({ icon, title, sub }) {
+  return (
+    <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: sub ? 4 : 0 }}>
+        {icon}
+        <span style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>{title}</span>
+      </div>
+      {sub && <p style={{ margin: 0, fontSize: 12, color: C.muted, paddingLeft: 23 }}>{sub}</p>}
     </div>
   )
 }
 
 function MissionRow({ index, mission }) {
   return (
-    <div className="py-4">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-xs font-bold tabular-nums w-5 text-right shrink-0"
-              style={{ color: 'var(--color-muted)' }}>{index}.</span>
-        <span className="font-semibold" style={{ color: 'var(--color-text)' }}>{mission.node}</span>
-        <Badge variant="accent">{mission.game_mode}</Badge>
+    <div style={{ padding: '12px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, minWidth: 20, textAlign: 'right' }}>{index}.</span>
+        <span style={{ fontWeight: 700, color: C.text }}>{mission.node}</span>
+        <Badge color={C.accent} bg={C.accentFaint}>{mission.game_mode}</Badge>
       </div>
-      <ul className="ml-7 space-y-1">
-        {mission.parts.map((p) => (
-          <li key={p} className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-muted)' }}>
-            <ChevronRight className="size-3 shrink-0" style={{ color: 'var(--color-border)' }} />
-            {p}
-          </li>
+      <div style={{ paddingLeft: 28 }}>
+        {mission.parts.map(p => (
+          <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <ChevronRight size={12} color={C.border} style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 13, color: C.muted }}>{p}</span>
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   )
 }
 
 function CollapsibleCard({ icon, title, count, children }) {
   const [open, setOpen] = useState(false)
+  const [hov, setHov] = useState(false)
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
+    <Card style={{ marginBottom: 12, overflow: 'hidden' }}>
       <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-3 px-6 py-4 text-sm font-medium text-left transition-colors"
-        style={{ color: 'var(--color-text)' }}
-        onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface2)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        onClick={() => setOpen(o => !o)}
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+          padding: '16px 20px', background: hov ? C.surface2 : 'transparent',
+          border: 'none', cursor: 'pointer', color: C.text,
+          textAlign: 'left', transition: 'background .15s',
+        }}
       >
-        <span style={{ color: 'var(--color-muted)' }}>{icon}</span>
-        <span className="flex-1">{title}</span>
-        <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-              style={{ background: 'var(--color-surface2)', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }}>
-          {count}
-        </span>
-        <ChevronDown className="size-4 transition-transform shrink-0"
-                     style={{ color: 'var(--color-muted)', transform: open ? 'rotate(180deg)' : 'none' }} />
+        {icon}
+        <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{title}</span>
+        <span style={{
+          fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
+          background: C.surface2, color: C.muted, border: `1px solid ${C.border}`,
+        }}>{count}</span>
+        <ChevronDown size={16} color={C.muted}
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s', flexShrink: 0 }} />
       </button>
       {open && (
-        <div className="px-6 pb-5 pt-0" style={{ borderTop: '1px solid var(--color-border)' }}>
-          <div className="pt-4">{children}</div>
+        <div style={{ padding: '16px 20px 20px', borderTop: `1px solid ${C.border}` }}>
+          {children}
         </div>
       )}
-    </div>
+    </Card>
   )
 }
 
 function ItemGrid({ items }) {
   return (
-    <ul className="columns-2 gap-6 text-sm space-y-1.5" style={{ color: 'var(--color-muted)' }}>
-      {items.map((x) => (
-        <li key={x} className="break-inside-avoid flex items-center gap-2">
-          <span className="size-1 rounded-full shrink-0 inline-block"
-                style={{ background: 'var(--color-border)' }} />
+    <div style={{ columns: '2', columnGap: 24 }}>
+      {items.map(x => (
+        <div key={x} style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          fontSize: 13, color: C.muted, marginBottom: 6, breakInside: 'avoid',
+        }}>
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.border, flexShrink: 0 }} />
           {x}
-        </li>
+        </div>
       ))}
-    </ul>
+    </div>
   )
 }
