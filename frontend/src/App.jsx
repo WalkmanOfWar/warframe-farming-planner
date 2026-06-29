@@ -482,10 +482,19 @@ function Results({ r }) {
         </CollapsibleCard>
       )}
 
-      {(r.no_part_source || []).length > 0 && (
+      {Object.keys(r.no_part_source || {}).length > 0 && (
         <CollapsibleCard icon={<ShoppingBag size={15} color={C.gold} />}
-          title="Buy from Market (Blueprints — no mission drop)" count={r.no_part_source.length}>
-          <ItemGrid items={r.no_part_source} images={img} />
+          title="Buy from Market (Blueprints — no mission drop)"
+          count={Object.values(r.no_part_source).reduce((s, a) => s + a.length, 0)}>
+          {Object.entries(r.no_part_source).map(([equip, parts]) => (
+            <div key={equip} style={{ marginBottom: 16 }}>
+              <div style={{
+                fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+                color: C.gold, textTransform: 'uppercase', marginBottom: 8,
+              }}>{equip}</div>
+              <ItemGrid items={parts} images={img} />
+            </div>
+          ))}
         </CollapsibleCard>
       )}
 
@@ -540,7 +549,9 @@ function MissionRow({ index, mission, images = {} }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, minWidth: 20, textAlign: 'right' }}>{index}.</span>
         <span style={{ fontWeight: 700, color: C.text }}>{mission.node}</span>
-        <Badge color={C.accent} bg={C.accentFaint}>{mission.game_mode}</Badge>
+        {mission.game_mode && mission.game_mode !== 'Unknown' && (
+          <Badge color={C.accent} bg={C.accentFaint}>{mission.game_mode}</Badge>
+        )}
       </div>
       <div style={{ paddingLeft: 28, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {mission.parts.map(p => (

@@ -53,8 +53,9 @@ class RouteResult:
     vaulted_equipment: list[str] = field(default_factory=list)
     vaulted_part_count: int = 0
     no_mission_source: list[str] = field(default_factory=list)
-    # Parts with /Recipes/ but no mission/relic drop (e.g. warframe main BPs from Market)
-    no_part_source: list[str] = field(default_factory=list)
+    # Parts with /Recipes/ but no mission/relic drop (e.g. Market-only gear),
+    # grouped by owning equipment: equipment display → sorted part display names.
+    no_part_source: dict[str, list[str]] = field(default_factory=dict)
     # Parts from non-standard sources (Sanctuary Onslaught, Plains, …) grouped by source
     special_source: dict[str, list[str]] = field(default_factory=dict)
     # display_name → https://cdn.warframestat.us/img/<imageName>
@@ -114,13 +115,24 @@ def plan_route(
         for t in sorted(tiers_needed)
     ]
 
+    from collections import defaultdict as _dd
+
     result.vaulted_equipment = sorted(plan.vaulted_equipment())
     result.vaulted_part_count = len(plan.not_farmable)
     result.no_mission_source = sorted(plan.no_mission_source)
-    result.no_part_source = sorted(plan.orphan_parts.values())
+
+    # Market-only parts, grouped by owning equipment (e.g. Agkuza → Blade,
+    # Guard, Handle, Blueprint) so the section reads per-weapon, not as a flat
+    # alphabetical wall of "<X> Blueprint".
+    part_map: dict[str, list[str]] = _dd(list)
+    for pnorm, part_name in plan.orphan_parts.items():
+        equip = plan.part_equipment.get(pnorm, part_name)
+        part_map[equip].append(part_name)
+    result.no_part_source = {
+        eq: sorted(parts) for eq, parts in sorted(part_map.items())
+    }
 
     # Group special-source parts by location string, sorted.
-    from collections import defaultdict as _dd
     src_map: dict[str, list[str]] = _dd(list)
     for pnorm, locs in plan.special_source_parts.items():
         part_name = disp(pnorm)
@@ -153,7 +165,8 @@ def _build_image_map(
         relevant.add(pp.part)
     relevant.update(result.vaulted_equipment)
     relevant.update(result.no_mission_source)
-    relevant.update(result.no_part_source)
+    for parts in result.no_part_source.values():
+        relevant.update(parts)
     for parts in result.special_source.values():
         relevant.update(parts)
 
