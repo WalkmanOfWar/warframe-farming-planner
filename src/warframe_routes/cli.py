@@ -138,7 +138,10 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         n = sum(len(m.parts) for m in result.non_prime)
         click.echo(f"Non-Prime — {n} part(s) from {len(result.non_prime)} mission(s):\n")
         for i, m in enumerate(result.non_prime, 1):
-            click.echo(f"{i}. {m.node}  [{m.game_mode}]")
+            # "Unknown" is a sentinel for a missing (mode) in the drop location;
+            # don't print a meaningless tag (matches the web UI).
+            mode = f"  [{m.game_mode}]" if m.game_mode and m.game_mode != "Unknown" else ""
+            click.echo(f"{i}. {m.node}{mode}")
             for part in m.parts:
                 click.echo(f"     - {part}")
 
@@ -157,6 +160,25 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                    f"{len(result.vaulted_equipment)} fully-vaulted item(s)):")
         for item in result.vaulted_equipment:
             click.echo(f"  - {item}")
+
+    if result.special_source:
+        n = sum(len(p) for p in result.special_source.values())
+        click.echo(f"\nOther sources — non-standard nodes "
+                   f"(Sanctuary Onslaught, Plains, syndicates, ...) "
+                   f"({n} part(s)):")
+        for src, parts in result.special_source.items():
+            click.echo(f"  {src}:")
+            for part in parts:
+                click.echo(f"     - {part}")
+
+    if result.no_part_source:
+        n = sum(len(p) for p in result.no_part_source.values())
+        click.echo(f"\nBuy from Market — blueprints with no mission drop "
+                   f"({n} part(s)):")
+        for equip, parts in result.no_part_source.items():
+            click.echo(f"  {equip}:")
+            for part in parts:
+                click.echo(f"     - {part}")
 
     if result.no_mission_source:
         click.echo(f"\nNot from mission drops — get elsewhere (market, clan dojo, "
