@@ -126,10 +126,31 @@ def test_nonprime_routed_to_boss_node():
 
 def test_market_only_blueprint_in_no_part_source():
     res = _plan()
-    assert "Rhino Blueprint" in res.no_part_source
-    # ...and it must NOT leak into the mission route or special sources.
+    # Grouped by owning equipment: Rhino -> [Rhino Blueprint].
+    assert res.no_part_source == {"Rhino": ["Rhino Blueprint"]}
+    # ...and it must NOT leak into the mission route.
     routed = {p for m in res.non_prime for p in m.parts}
     assert "Rhino Blueprint" not in routed
+
+
+def test_no_part_source_groups_multiple_parts_under_equipment():
+    # A Market weapon whose every part is bought (no drops): all parts must
+    # collapse under one equipment key, sorted — not a flat per-part list.
+    weapon = [{
+        "name": "Agkuza", "masterable": True,
+        "components": [
+            {"name": n, "uniqueName": f"/Lotus/Types/Recipes/Weapons/Agkuza{n}",
+             "drops": []}
+            for n in ("Blueprint", "Blade", "Guard", "Handle")
+        ],
+    }]
+    res = service.plan_route(
+        owned=set(), want={"agkuza"}, owned_parts=set(),
+        items_data=weapon, mission_rewards={"missionRewards": {}})
+    assert res.no_part_source == {
+        "Agkuza": ["Agkuza Blade", "Agkuza Blueprint",
+                   "Agkuza Guard", "Agkuza Handle"],
+    }
 
 
 def test_special_source_grouped_by_location():
@@ -154,7 +175,7 @@ def test_owned_parts_subtracted_across_buckets():
     assert all(p.part != "Volt Prime Blueprint" for p in res.prime)
     assert res.non_prime == []                       # only part was owned
     assert res.special_source == {}
-    assert "Rhino Blueprint" not in res.no_part_source
+    assert res.no_part_source == {}                  # Rhino BP was owned
 
 
 def test_image_map_blueprint_prefers_portrait_over_schematic():
