@@ -22,6 +22,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from . import effort
 from .data import Node
 from .items import base_relic_name, normalize, parse_location, relic_refinement
 
@@ -180,8 +181,12 @@ def build_plan(
     # Which relics are currently in rotation (appear in the live drop tables)?
     # Also record, per relic, the best (highest-chance) node to farm it and that
     # node's game mode — needed to estimate relic-acquisition effort.
+    # For each relic keep the node that's *fastest* to farm it, i.e. minimizes
+    # expected time per relic = (1/chance) * mode_minutes — not merely the highest
+    # drop chance. A quick Capture at 6% beats a slow Survival-rot-C at 10%.
     available: dict[str, str] = {}
     relic_source: dict[str, tuple[float, str]] = {}
+    relic_best_time: dict[str, float] = {}
     root = mission_rewards_raw.get("missionRewards", mission_rewards_raw)
     for planet_nodes in root.values() if isinstance(root, dict) else []:
         if not isinstance(planet_nodes, dict):
@@ -192,8 +197,12 @@ def build_plan(
             mode = node_data.get("gameMode", "Unknown")
             for rnorm, display, chance in _relic_drops(node_data.get("rewards", {})):
                 available[rnorm] = display
-                prev = relic_source.get(rnorm)
-                if prev is None or chance > prev[0]:
+                if chance <= 0:
+                    relic_source.setdefault(rnorm, (chance, mode))
+                    continue
+                farm_time = (100.0 / chance) * effort.mode_minutes(mode)
+                if farm_time < relic_best_time.get(rnorm, float("inf")):
+                    relic_best_time[rnorm] = farm_time
                     relic_source[rnorm] = (chance, mode)
 
     # Prime parts: keep only relics currently in rotation; vaulted parts split off.

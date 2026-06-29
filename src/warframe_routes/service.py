@@ -114,7 +114,9 @@ def _best_prime_relic(plan, pnorm: str, relics_display: list[str],
         e = effort.prime_part_runs(d, r_chance)
         minutes = (e["relic_farm_runs"] * effort.mode_minutes(r_mode)
                    + e["crack_runs"] * effort.FISSURE_MINUTES)
-        if e["total_runs"] < best["total_runs"]:
+        # Minimize *time*, consistent with the non-Prime route — a few more runs
+        # of a fast mode can beat fewer runs of a slow one.
+        if minutes < best["minutes"]:
             best = {"relic": rdisp, "minutes": minutes, **e}
     return best
 
