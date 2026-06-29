@@ -55,6 +55,8 @@ class RouteResult:
     no_mission_source: list[str] = field(default_factory=list)
     # Parts with /Recipes/ but no mission/relic drop (e.g. warframe main BPs from Market)
     no_part_source: list[str] = field(default_factory=list)
+    # Parts from non-standard sources (Sanctuary Onslaught, Plains, …) grouped by source
+    special_source: dict[str, list[str]] = field(default_factory=dict)
     # display_name → https://cdn.warframestat.us/img/<imageName>
     images: dict[str, str] = field(default_factory=dict)
 
@@ -84,6 +86,7 @@ def plan_route(
     for p in owned_parts:
         plan.prime_part_relics.pop(p, None)
         plan.orphan_parts.pop(p, None)
+        plan.special_source_parts.pop(p, None)
 
     disp = lambda p: plan.part_display.get(p, p)
 
@@ -115,6 +118,16 @@ def plan_route(
     result.vaulted_part_count = len(plan.not_farmable)
     result.no_mission_source = sorted(plan.no_mission_source)
     result.no_part_source = sorted(plan.orphan_parts.values())
+
+    # Group special-source parts by location string, sorted.
+    from collections import defaultdict as _dd
+    src_map: dict[str, list[str]] = _dd(list)
+    for pnorm, locs in plan.special_source_parts.items():
+        part_name = disp(pnorm)
+        for loc in locs:
+            src_map[loc].append(part_name)
+    result.special_source = {src: sorted(set(parts)) for src, parts in sorted(src_map.items())}
+
     result.images = _build_image_map(items_data, result, plan.part_equipment)
     return result
 
@@ -141,6 +154,8 @@ def _build_image_map(
     relevant.update(result.vaulted_equipment)
     relevant.update(result.no_mission_source)
     relevant.update(result.no_part_source)
+    for parts in result.special_source.values():
+        relevant.update(parts)
 
     # normalized name → CDN URL (equipment names and component names)
     norm_to_url: dict[str, str] = {}

@@ -488,6 +488,23 @@ function Results({ r }) {
           <ItemGrid items={r.no_part_source} images={img} />
         </CollapsibleCard>
       )}
+
+      {Object.keys(r.special_source || {}).length > 0 && (
+        <CollapsibleCard
+          icon={<Crosshair size={15} color={C.accent} />}
+          title="Other sources (Sanctuary Onslaught / Plains / etc.)"
+          count={Object.values(r.special_source).reduce((s, a) => s + a.length, 0)}>
+          {Object.entries(r.special_source).map(([src, parts]) => (
+            <div key={src} style={{ marginBottom: 16 }}>
+              <div style={{
+                fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+                color: C.accent, textTransform: 'uppercase', marginBottom: 8,
+              }}>{src}</div>
+              <ItemGrid items={parts} images={img} />
+            </div>
+          ))}
+        </CollapsibleCard>
+      )}
     </div>
   )
 }
