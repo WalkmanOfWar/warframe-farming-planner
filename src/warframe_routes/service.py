@@ -156,27 +156,35 @@ def _build_image_map(
     for name in relevant:
         norm = items.normalize(name)
 
-        # 1. Direct hit (equipment name or component with its own imageName).
+        # 1. Direct hit: exact match on equipment or a component that has its own
+        #    imageName (e.g. "Gauss Neuroptics Blueprint" if WFCD supplies it).
         if norm in norm_to_url:
             out[name] = norm_to_url[norm]
             continue
 
-        # 2. Parent equipment via part_equipment (values are display names → normalize).
-        eq_disp = part_equipment.get(norm)
-        if eq_disp:
-            eq_n = items.normalize(eq_disp)
-            if eq_n in norm_to_url:
-                out[name] = norm_to_url[eq_n]
-                continue
-
-        # 3. Progressive prefix: strip trailing words until a match is found.
-        #    "Ruvox Glove Blueprint" → "Ruvox Glove" → "Ruvox"
+        # 2. Progressive prefix — strip trailing words one by one, most-specific
+        #    first. This finds "Gauss Neuroptics" before "Gauss", so component
+        #    icons take priority over the parent warframe icon.
+        #    "Gauss Neuroptics Blueprint" → "Gauss Neuroptics" → "Gauss"
+        #    "Ruvox Glove Blueprint"      → "Ruvox Glove"      → "Ruvox"
         words = norm.split()
+        found = False
         while len(words) > 1:
             words.pop()
             prefix = " ".join(words)
             if prefix in norm_to_url:
                 out[name] = norm_to_url[prefix]
+                found = True
                 break
+        if found:
+            continue
+
+        # 3. Last resort: look up the parent equipment via part_equipment mapping
+        #    (values are display names, so normalize before lookup).
+        eq_disp = part_equipment.get(norm)
+        if eq_disp:
+            eq_n = items.normalize(eq_disp)
+            if eq_n in norm_to_url:
+                out[name] = norm_to_url[eq_n]
 
     return out
