@@ -65,6 +65,10 @@ FISSURE_MINUTES = 2.5
 # Order matters: better refinement = higher part chance but costs void traces.
 REFINEMENTS = ("Intact", "Exceptional", "Flawless", "Radiant")
 
+# Above this many parts at one node, exact inclusion-exclusion (2^k terms) is
+# too expensive, so mission_runs falls back to an O(k) independent-rolls estimate.
+_EXACT_MAX_PARTS = 12
+
 
 def mode_minutes(game_mode: str) -> float:
     return MODE_MINUTES.get(game_mode, DEFAULT_MODE_MINUTES)
@@ -84,14 +88,21 @@ def part_runs(chance_pct: float) -> float:
 def mission_runs(chances_pct: list[float]) -> float:
     """Expected rolls to collect *every* listed part from one node.
 
-    Exact weighted coupon-collector via inclusion-exclusion. Any part with a
-    non-positive chance makes the whole collection unobtainable (``inf``).
+    For a realistic number of parts (≤ ``_EXACT_MAX_PARTS``) this is the exact
+    weighted coupon-collector for the "one mutually-exclusive drop per roll"
+    model, via inclusion-exclusion. For very fat drop tables it falls back to an
+    O(k) independent-rolls estimate (a slight over-estimate, since it ignores
+    that every roll is productive) — 2^k inclusion-exclusion is intractable when
+    a single node lists dozens of needed parts. Any part with a non-positive
+    chance makes the whole collection unobtainable (``inf``).
     """
     ps = [_p(c) for c in chances_pct]
     if not ps:
         return 0.0
     if any(p <= 0 for p in ps):
         return float("inf")
+    if len(ps) > _EXACT_MAX_PARTS:
+        return _mission_runs_independent(ps)
     total = 0.0
     n = len(ps)
     for k in range(1, n + 1):
@@ -99,6 +110,26 @@ def mission_runs(chances_pct: list[float]) -> float:
             sign = 1 if k % 2 == 1 else -1
             total += sign / sum(combo)
     return total
+
+
+def _mission_runs_independent(ps: list[float]) -> float:
+    """E[rolls] to collect all parts, treating each as an independent geometric.
+
+    E[max T_i] = Σ_{t≥0} (1 - ∏_i (1 - (1-p_i)^t)). Summed until the per-step
+    contribution is negligible; the tail decays at rate (1 - min p_i), so this is
+    O(k / min p). Equals 1/p for a single part, like the exact model.
+    """
+    q = [1.0 - p for p in ps]
+    total, t = 0.0, 0
+    while True:
+        prob_all = 1.0
+        for qi in q:
+            prob_all *= (1.0 - qi ** t)
+        term = 1.0 - prob_all
+        total += term
+        if t > 0 and term < 1e-9:
+            return total
+        t += 1
 
 
 def prime_part_runs(in_relic_chance_pct: float, relic_node_chance_pct: float) -> dict:

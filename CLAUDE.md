@@ -103,14 +103,19 @@ The pipeline is a staged flow, one module per stage under `src/warframe_routes/`
    includes built-but-unmastered gear `XPInfo` misses), so `cli.py` skips public sync
    then; a saved `--inventory` file still also pulls the profile (it may be partial).
 
-4. **`optimize.py`** — fewest-missions is **set cover (NP-hard)**, solved with the
-   greedy heuristic. Returns a `Route` of `RouteStep`s plus `uncovered`. Used for the
-   **non-Prime** `direct_nodes`/`direct_parts` only — the Prime side is tier-farmed,
-   not node-routed.
+4. **`optimize.py`** — objective-agnostic node selection (NP-hard set cover /
+   facility-location, greedy). Two entry points, both returning a `Route` of
+   `RouteStep`s + `uncovered`: `optimize_route` (fewest nodes, count-only) and
+   `optimize_by_cost(nodes, needed, cost_fn)` (least **injected cost**, assigning
+   each item to one node by smallest *marginal* cost — reuses stops, prefers
+   higher-chance/faster nodes). **`service` uses `optimize_by_cost` with an
+   expected-**time** cost for the non-Prime route**; `optimize_route` is the
+   generic kept for tests/fallback. Prime side is tier-farmed, not node-routed.
 
    **`effort.py`** — turns drop **chances** into expected **runs** and **time**.
    Non-Prime: `1/p` per part, exact inclusion-exclusion coupon-collector for a
-   node's set (mutually-exclusive "one drop per roll" model). Prime: two-step
+   node's set (mutually-exclusive "one drop per roll"); fat tables (>12 parts)
+   fall back to an O(k) independent-rolls estimate. Prime: two-step
    `(1/d)(1/r + 1)` — farm the relic (node chance `r`) then crack it (in-relic
    chance `d`, refinement-dependent), modelled solo. `MODE_MINUTES`/`FISSURE_MINUTES`
    are rough per-mode time estimates (the one judgement part — tune freely). Pure
@@ -170,12 +175,13 @@ Both the **Prime relic chain and the non-Prime direct chain are built**
    plus it handles the password and is grayer on ToS. A future no-touch option could
    read the live game's session token like warframe-api-helper does (OS-specific).
 
-3. **RNG/cracking is *displayed* but not *optimized*.** `effort.py` now estimates
-   expected runs + time per part/mission (incl. relic refinement and the separate
-   cracking step), and the route is annotated with it. But the **optimizer still
-   picks fewest missions**, not least expected effort — re-targeting `optimize.py`
-   to minimize expected runs is the remaining step. Cracking is modelled **solo**
-   (one relic per fissure); a shared-radiant (4× relics/run) mode is a future knob.
+3. **Non-Prime is effort-optimized; Prime is per-part, not joint.** The non-Prime
+   route now minimizes expected **time** (`optimize_by_cost`), picking the best
+   node when a part drops at several. Prime still chooses each part's *cheapest
+   relic independently* — it does **not** jointly optimize relics that share
+   multiple needed parts (one crack can yield several), nor model 4× shared-radiant
+   cracking (cracking is solo, one relic per fissure). Those are the remaining
+   optimization steps. Time uses rough per-mode estimates (`effort.MODE_MINUTES`).
 
 The modular pipeline is structured so each can be added without disturbing the
 others; `optimize.py` stays objective-agnostic.

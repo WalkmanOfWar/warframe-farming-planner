@@ -152,9 +152,19 @@ def plan_route(
 
     disp = lambda p: plan.part_display.get(p, p)
 
-    # Non-Prime: fewest-missions set cover over boss/mission nodes.
+    # Non-Prime: route by least expected *time*, not fewest missions. When a
+    # part drops at several nodes the optimizer picks the cheapest one (higher
+    # chance and/or faster mode), assigning each part to exactly one node.
     if plan.direct_parts:
-        route = optimize.optimize_route(plan.direct_nodes, plan.direct_parts)
+        def node_cost(node, parts):
+            chances = plan.node_part_chance.get(node.key, {})
+            runs = effort.mission_runs([chances.get(p, 0.0) for p in parts])
+            if runs == float("inf"):
+                return float("inf")
+            return runs * effort.mode_minutes(node.game_mode)
+
+        route = optimize.optimize_by_cost(plan.direct_nodes, plan.direct_parts,
+                                          node_cost)
         missions = []
         for step in route.steps:
             chances = plan.node_part_chance.get(step.node.key, {})
@@ -169,6 +179,8 @@ def plan_route(
                 part_runs={disp(p): _runs(effort.part_runs(chances.get(p, 0.0)))
                            for p in covered},
             ))
+        # Show the heaviest missions first so the time sink is obvious.
+        missions.sort(key=lambda m: (m.minutes is None, -(m.minutes or 0)))
         result.non_prime = missions
         result.non_prime_uncovered = sorted(disp(p) for p in route.uncovered)
 

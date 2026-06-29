@@ -40,7 +40,7 @@ ITEMS = [
             {"name": "Chassis",
              "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/RhinoChassis",
              "imageName": "rhinochassis.png",
-             "drops": [{"type": "Rhino Chassis Blueprint",
+             "drops": [{"type": "Rhino Chassis Blueprint", "chance": 38.72,
                         "location": "Venus/Fossa (Assassination)"}]},
             {"name": "Blueprint",  # Market-only: no drops anywhere
              "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/RhinoBlueprint",
