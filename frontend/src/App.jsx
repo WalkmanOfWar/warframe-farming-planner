@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import {
-  AlertCircle, CheckCircle2, ChevronDown, ChevronRight,
+  AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock,
   Crosshair, Gem, Loader2, Lock, MapPin, ShoppingBag,
   Swords, Upload, X,
 } from 'lucide-react'
@@ -38,6 +38,27 @@ const TIER_COLOR = { Lith: C.lith, Meso: C.meso, Neo: C.neo, Axi: C.axi, Requiem
 
 function lines(text) {
   return text.split('\n').map((s) => s.trim()).filter(Boolean)
+}
+
+function fmtHours(minutes) {
+  if (minutes == null) return null
+  const m = Math.round(minutes)
+  const h = Math.floor(m / 60)
+  return h ? `${h}h ${m % 60}m` : `${m}m`
+}
+
+// Inline "~N runs · ~Xh Ym" effort tag; null when effort is unknown.
+function EffortTag({ runs, minutes }) {
+  if (runs == null || minutes == null) return null
+  return (
+    <span style={{
+      fontSize: 12, fontWeight: 600, color: C.accent,
+      background: C.accentFaint, border: `1px solid ${C.accentBorder}`,
+      borderRadius: 6, padding: '1px 8px', whiteSpace: 'nowrap',
+    }}>
+      ~{runs} runs · ~{fmtHours(minutes)}
+    </span>
+  )
 }
 
 /* ── Primitives ───────────────────────────────────────────── */
@@ -169,6 +190,7 @@ export default function App() {
   const [accountId, setAccountId] = useState('')
   const [nonce, setNonce] = useState('')
   const [wishlist, setWishlist] = useState('')
+  const [refinement, setRefinement] = useState('Intact')
   const [inventory, setInventory] = useState(null)
   const [invName, setInvName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -205,6 +227,7 @@ export default function App() {
         account_id: accountId.trim() || null,
         nonce: nonce.trim() || null,
         wishlist: wishlist.trim() ? lines(wishlist) : null,
+        refinement,
         inventory,
       }
       const res = await fetch(API, {
@@ -283,6 +306,19 @@ export default function App() {
           <Field label="Wishlist" hint="optional — one item per line; empty = everything masterable">
             <TextArea value={wishlist} onChange={e => setWishlist(e.target.value)}
               placeholder={'Caliban Prime\nVolt Prime\nSibear'} rows={3} />
+          </Field>
+
+          <Field label="Relic refinement" hint="for Prime effort estimate — Radiant helps rares, hurts commons">
+            <select value={refinement} onChange={e => setRefinement(e.target.value)}
+              style={{
+                width: '100%', background: C.bg, color: C.text,
+                border: `1px solid ${C.border}`, borderRadius: 8,
+                padding: '10px 12px', fontSize: 14, outline: 'none',
+                boxSizing: 'border-box', fontFamily: 'inherit', cursor: 'pointer',
+              }}>
+              {['Intact', 'Exceptional', 'Flawless', 'Radiant'].map(o =>
+                <option key={o} value={o}>{o}</option>)}
+            </select>
           </Field>
 
           <Btn onClick={plan} disabled={loading} fullWidth>
@@ -400,6 +436,23 @@ function Results({ r }) {
         <StatCard icon={<Lock size={16} color={C.gold} />}    n={r.vaulted_part_count} label="vaulted" />
       </div>
 
+      {/* Estimated total time */}
+      {r.total_minutes != null && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          marginBottom: 16, padding: '12px 16px', textAlign: 'center',
+          background: C.accentFaint, border: `1px solid ${C.accentBorder}`, borderRadius: 12,
+        }}>
+          <Clock size={16} color={C.accent} />
+          <span style={{ fontSize: 14, color: C.text }}>
+            Estimated total: <b style={{ color: C.accent }}>~{fmtHours(r.total_minutes)}</b>
+            <span style={{ color: C.muted }}>
+              {' '}· rough, {r.refinement} relics, solo cracking
+            </span>
+          </span>
+        </div>
+      )}
+
       {/* Non-prime */}
       {r.non_prime.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
@@ -428,7 +481,8 @@ function Results({ r }) {
                 <thead>
                   <tr style={{ background: C.surface2, borderBottom: `1px solid ${C.border}` }}>
                     <th style={{ textAlign: 'left', padding: '10px 16px', color: C.muted, fontWeight: 500 }}>Part</th>
-                    <th style={{ textAlign: 'left', padding: '10px 16px', color: C.muted, fontWeight: 500 }}>In-rotation relics</th>
+                    <th style={{ textAlign: 'left', padding: '10px 16px', color: C.muted, fontWeight: 500 }}>In-rotation relics (★ cheapest)</th>
+                    <th style={{ textAlign: 'right', padding: '10px 16px', color: C.muted, fontWeight: 500, whiteSpace: 'nowrap' }}>Effort</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -442,8 +496,19 @@ function Results({ r }) {
                       </td>
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {p.relics.map(rel => <Badge key={rel}>{rel}</Badge>)}
+                          {p.relics.map(rel => (
+                            <Badge key={rel}
+                              color={rel === p.best_relic ? C.gold : undefined}
+                              bg={rel === p.best_relic ? C.goldFaint : undefined}>
+                              {rel === p.best_relic ? `★ ${rel}` : rel}
+                            </Badge>
+                          ))}
                         </div>
+                      </td>
+                      <td style={{ padding: '10px 16px', verticalAlign: 'top', textAlign: 'right' }}>
+                        {p.runs != null
+                          ? <EffortTag runs={p.runs} minutes={p.minutes} />
+                          : <span style={{ fontSize: 12, color: C.muted }}>—</span>}
                       </td>
                     </tr>
                   ))}
@@ -552,14 +617,22 @@ function MissionRow({ index, mission, images = {} }) {
         {mission.game_mode && mission.game_mode !== 'Unknown' && (
           <Badge color={C.accent} bg={C.accentFaint}>{mission.game_mode}</Badge>
         )}
+        <span style={{ flex: 1 }} />
+        <EffortTag runs={mission.runs} minutes={mission.minutes} />
       </div>
       <div style={{ paddingLeft: 28, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {mission.parts.map(p => (
-          <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <ItemIcon url={images[p]} name={p} size={24} />
-            <span style={{ fontSize: 13, color: C.muted }}>{p}</span>
-          </div>
-        ))}
+        {mission.parts.map(p => {
+          const pr = (mission.part_runs || {})[p]
+          return (
+            <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ItemIcon url={images[p]} name={p} size={24} />
+              <span style={{ fontSize: 13, color: C.muted }}>{p}</span>
+              {pr != null && (
+                <span style={{ fontSize: 11, color: C.muted, opacity: 0.7 }}>~{pr} runs</span>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

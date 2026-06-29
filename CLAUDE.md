@@ -108,9 +108,22 @@ The pipeline is a staged flow, one module per stage under `src/warframe_routes/`
    **non-Prime** `direct_nodes`/`direct_parts` only — the Prime side is tier-farmed,
    not node-routed.
 
+   **`effort.py`** — turns drop **chances** into expected **runs** and **time**.
+   Non-Prime: `1/p` per part, exact inclusion-exclusion coupon-collector for a
+   node's set (mutually-exclusive "one drop per roll" model). Prime: two-step
+   `(1/d)(1/r + 1)` — farm the relic (node chance `r`) then crack it (in-relic
+   chance `d`, refinement-dependent), modelled solo. `MODE_MINUTES`/`FISSURE_MINUTES`
+   are rough per-mode time estimates (the one judgement part — tune freely). Pure
+   functions; chances are **percentages**; `0`/missing ⇒ `inf` (unobtainable).
+   `acquisition.build_plan` carries the chance data (`node_part_chance`,
+   `part_relic_refine_chance`, `relic_source`) the model needs.
+
 5. **`service.py`** — UI-agnostic core shared by CLI and web. `plan_route()` takes
-   resolved `owned`/`want`/`owned_parts` sets + datasets and returns a structured
-   `RouteResult` (missions, prime parts+relics, tier guide, vaulted, no-source).
+   resolved `owned`/`want`/`owned_parts` sets + datasets (+ a `refinement`) and
+   returns a structured `RouteResult` (missions, prime parts+relics, tier guide,
+   vaulted, no-source) **annotated with expected runs/time** via `effort.py`, plus
+   `total_minutes`. Effort is a *displayed metric*, not the optimizer objective —
+   routing is still fewest-missions. `inf` is sanitized to `None` (JSON-safe).
    Owns `RELIC_TIER_GUIDE`. **Both `cli.py` and `web.py` call this** — never
    reimplement plan assembly elsewhere.
 
@@ -157,10 +170,12 @@ Both the **Prime relic chain and the non-Prime direct chain are built**
    plus it handles the password and is grayer on ToS. A future no-touch option could
    read the live game's session token like warframe-api-helper does (OS-specific).
 
-3. **Coverage ignores RNG and cracking.** Set-cover treats a node as "covers part P"
-   if it drops a relic containing P, ignoring drop chance, relic refinement, and the
-   separate void-fissure cracking step. Fine for "which missions give access to the
-   relics", but a time/expected-runs objective would need the discarded chance data.
+3. **RNG/cracking is *displayed* but not *optimized*.** `effort.py` now estimates
+   expected runs + time per part/mission (incl. relic refinement and the separate
+   cracking step), and the route is annotated with it. But the **optimizer still
+   picks fewest missions**, not least expected effort — re-targeting `optimize.py`
+   to minimize expected runs is the remaining step. Cracking is modelled **solo**
+   (one relic per fissure); a shared-radiant (4× relics/run) mode is a future knob.
 
 The modular pipeline is structured so each can be added without disturbing the
 others; `optimize.py` stays objective-agnostic.
