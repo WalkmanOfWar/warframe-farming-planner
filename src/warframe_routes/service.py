@@ -111,16 +111,24 @@ def plan_route(
     result.vaulted_equipment = sorted(plan.vaulted_equipment())
     result.vaulted_part_count = len(plan.not_farmable)
     result.no_mission_source = sorted(plan.no_mission_source)
-    result.images = _build_image_map(items_data, result)
+    result.images = _build_image_map(items_data, result, plan.part_equipment)
     return result
 
 
 _CDN = "https://cdn.warframestat.us/img/"
 
 
-def _build_image_map(items_data: list[dict], result: RouteResult) -> dict[str, str]:
-    """Return display_name → CDN URL for every name that appears in the result."""
-    # Collect all display names we need images for.
+def _build_image_map(
+    items_data: list[dict],
+    result: RouteResult,
+    part_equipment: dict[str, str],
+) -> dict[str, str]:
+    """Return display_name → CDN URL for every name that appears in the result.
+
+    Parts (e.g. "Caliban Prime Neuroptics") rarely have their own imageName, so
+    we fall back to the parent equipment's image via part_equipment (which maps
+    normalized part name → normalized equipment name).
+    """
     relevant: set[str] = set()
     for m in result.non_prime:
         relevant.update(m.parts)
@@ -129,9 +137,7 @@ def _build_image_map(items_data: list[dict], result: RouteResult) -> dict[str, s
     relevant.update(result.vaulted_equipment)
     relevant.update(result.no_mission_source)
 
-    norm_relevant = {items.normalize(n) for n in relevant}
-
-    # Build normalized-name → CDN URL from the items dataset.
+    # normalized name → CDN URL (equipment names and component names)
     norm_to_url: dict[str, str] = {}
     for it in items_data:
         if not isinstance(it, dict):
@@ -140,19 +146,21 @@ def _build_image_map(items_data: list[dict], result: RouteResult) -> dict[str, s
         img = it.get("imageName") or ""
         if eq_name and img:
             norm_to_url[items.normalize(eq_name)] = _CDN + img
-        # Component full display name = "<equipment> <component>", e.g.
-        # "Caliban Prime Blueprint". Also index the component part alone for
-        # fallback ("Blueprint" → blueprint.png) though we prefer the full name.
         for comp in it.get("components") or []:
             cname = comp.get("name") or ""
             cimg = comp.get("imageName") or ""
-            if not (cname and cimg and eq_name):
-                continue
-            full = f"{eq_name} {cname}"
-            norm_to_url[items.normalize(full)] = _CDN + cimg
+            if cname and cimg and eq_name:
+                norm_to_url[items.normalize(f"{eq_name} {cname}")] = _CDN + cimg
 
-    return {
-        name: norm_to_url[items.normalize(name)]
-        for name in relevant
-        if items.normalize(name) in norm_to_url
-    }
+    out: dict[str, str] = {}
+    for name in relevant:
+        norm = items.normalize(name)
+        if norm in norm_to_url:
+            # Direct hit (equipment name, or component with own imageName).
+            out[name] = norm_to_url[norm]
+        else:
+            # Parts rarely have their own image; use the parent equipment's icon.
+            eq_norm = part_equipment.get(norm)
+            if eq_norm and eq_norm in norm_to_url:
+                out[name] = norm_to_url[eq_norm]
+    return out
