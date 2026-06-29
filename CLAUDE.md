@@ -22,6 +22,11 @@ wfroutes route --helper path/to/warframe-api-helper.exe   # best: auto-pull full
 wfroutes route --account-id <id> --nonce <nonce>          # full inventory via live nonce
 wfroutes route --account-id <id>                          # public profile only (no loose parts)
 python -m warframe_routes.cli route --inventory examples/inventory.sample.json --account-id <id>
+
+pip install -e ".[web]"          # install FastAPI + uvicorn for the web UI
+cd frontend && npm install && npm run build && cd ..   # build the React SPA -> frontend/dist
+wfroutes serve                   # serve API + built UI at http://127.0.0.1:8000
+cd frontend && npm run dev       # frontend dev server (proxies /api to :8000)
 ```
 
 Use `python -m warframe_routes.cli` rather than the `wfroutes` script when its
@@ -103,10 +108,22 @@ The pipeline is a staged flow, one module per stage under `src/warframe_routes/`
    **non-Prime** `direct_nodes`/`direct_parts` only — the Prime side is tier-farmed,
    not node-routed.
 
-5. **`cli.py`** — Click entry point: resolves owned (helper/nonce/inventory/profile)
-   + target (catalog/wishlist), subtracts loose `owned_parts`, then prints two
-   sections — the non-Prime mission route (via `optimize`) and the Prime per-part
-   relic list with a `RELIC_TIER_GUIDE` — plus the vaulted and no-mission buckets.
+5. **`service.py`** — UI-agnostic core shared by CLI and web. `plan_route()` takes
+   resolved `owned`/`want`/`owned_parts` sets + datasets and returns a structured
+   `RouteResult` (missions, prime parts+relics, tier guide, vaulted, no-source).
+   Owns `RELIC_TIER_GUIDE`. **Both `cli.py` and `web.py` call this** — never
+   reimplement plan assembly elsewhere.
+
+6. **`cli.py`** — Click entry point. Resolves owned (helper/nonce/inventory/profile)
+   + target (catalog/wishlist) + loose `owned_parts`, calls `service.plan_route`,
+   prints it. Also hosts the `serve` command (launches `web.py` via uvicorn).
+
+7. **`web.py` + `frontend/`** — local web UI. `web.py` is a FastAPI wrapper: `POST
+   /api/route` does the same input resolution as the CLI and returns
+   `RouteResult.to_dict()`; it serves the built React app (`frontend/dist`) at `/`
+   when present. `frontend/` is a Vite + React SPA (dev server proxies `/api` to
+   :8000). `catalog.all_targets(items_data)` derives the default target from the
+   **already-loaded** items dataset — no second network call.
 
 ### Cross-cutting invariant: name normalization
 

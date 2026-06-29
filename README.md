@@ -93,6 +93,28 @@ This is **not** your username. It's a 24-character hex id:
 Data comes from the public warframestat / WFCD APIs and is cached for a day under
 `~/.cache/warframe-optimize-routes/` (`--refresh` to force re-download).
 
+## Web UI
+
+A local React UI (same engine as the CLI) is in `frontend/`. Build it once, then
+serve it from the Python backend:
+
+```bash
+pip install -e ".[web]"
+cd frontend && npm install && npm run build && cd ..
+wfroutes serve                      # -> http://127.0.0.1:8000
+```
+
+Open the URL, enter your Account ID (and optionally a nonce / inventory.json /
+wishlist), and hit **Plan route**.
+
+For frontend development with hot-reload, run the backend and the Vite dev server
+side by side (the dev server proxies `/api` to port 8000):
+
+```bash
+wfroutes serve                      # terminal 1 (API on :8000)
+cd frontend && npm run dev          # terminal 2 (UI on :5173)
+```
+
 ## Credits & data sources
 
 This tool is just a planner on top of data and tools built by others. Huge thanks to:

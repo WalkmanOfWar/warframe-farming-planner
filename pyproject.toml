@@ -17,6 +17,10 @@ dev = [
     "pytest>=8.0",
     "responses>=0.25",
 ]
+web = [
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+]
 
 [project.scripts]
 wfroutes = "warframe_routes.cli:cli"

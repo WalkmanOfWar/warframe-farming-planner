@@ -4,18 +4,8 @@ from __future__ import annotations
 
 import click
 
-from . import (acquisition, catalog, data, inventory, items, optimize,
-               private_inventory, sync)
-
-# Best community spots to farm each relic tier (you farm a tier, not a relic).
-RELIC_TIER_GUIDE = {
-    "Lith": "Hepit (Void) - Capture, fast",
-    "Meso": "Ukko (Void) - Capture  /  Olympus (Mars) - Disruption, Rot C",
-    "Neo": "Ukko (Void) - Capture  /  Ur (Uranus) - Disruption, Rot B/C",
-    "Axi": "Apollo (Lua) - Disruption, Rot B/C",
-    "Requiem": "Kuva Siphon / Kuva Flood missions",
-}
-_GENERIC_TIER_HINT = "farm this tier at any matching void fissure"
+from . import (catalog, data, inventory, items, private_inventory, service,
+               sync)
 
 
 @click.group()
@@ -123,19 +113,7 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     if wishlist:
         want = inventory.load_item_list(wishlist)
     else:
-        want = {name.strip().casefold() for name in catalog.fetch_all_targets()}
-
-    needed_equipment = inventory.compute_needed(want, have)
-
-    if not needed_equipment:
-        click.echo("Nothing to farm — you already own everything in the target set.")
-        return
-
-    plan = acquisition.build_plan(
-        items_data,
-        data.load_raw(force_refresh=refresh),
-        needed_equipment,
-    )
+        want = {name.strip().casefold() for name in catalog.all_targets(items_data)}
 
     owned_parts: set[str] = set()
     if inv is not None:
@@ -143,51 +121,64 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                         for n in private_inventory.owned_parts(inv, items_data)}
     if have_parts:
         owned_parts |= inventory.load_item_list(have_parts)
-    plan.direct_parts -= owned_parts
-    plan.not_farmable -= owned_parts
-    for p in owned_parts:
-        plan.prime_part_relics.pop(p, None)
 
-    disp = lambda p: plan.part_display.get(p, p)
+    result = service.plan_route(
+        owned=have,
+        want=want,
+        owned_parts=owned_parts,
+        items_data=items_data,
+        mission_rewards=data.load_raw(force_refresh=refresh),
+    )
 
-    # --- Non-Prime: real fewest-missions route over boss/mission nodes ---
-    if plan.direct_parts:
-        result = optimize.optimize_route(plan.direct_nodes, plan.direct_parts)
-        click.echo(f"Non-Prime — {len(plan.direct_parts)} part(s) from "
-                   f"{result.mission_count} mission(s):\n")
-        for i, step in enumerate(result.steps, 1):
-            click.echo(f"{i}. {step.node.key}  [{step.node.game_mode}]")
-            for item in sorted(disp(p) for p in step.covers):
-                click.echo(f"     - {item}")
+    if not result.missing_equipment:
+        click.echo("Nothing to farm — you already own everything in the target set.")
+        return
 
-    # --- Prime: per-part relic, plus a tier farming guide (you farm tiers) ---
-    if plan.prime_part_relics:
-        click.echo(f"\nPrime — {len(plan.prime_part_relics)} part(s) "
+    if result.non_prime:
+        n = sum(len(m.parts) for m in result.non_prime)
+        click.echo(f"Non-Prime — {n} part(s) from {len(result.non_prime)} mission(s):\n")
+        for i, m in enumerate(result.non_prime, 1):
+            click.echo(f"{i}. {m.node}  [{m.game_mode}]")
+            for part in m.parts:
+                click.echo(f"     - {part}")
+
+    if result.prime:
+        click.echo(f"\nPrime — {len(result.prime)} part(s) "
                    "(farm the relic's TIER, then crack it at a void fissure):\n")
-        for pnorm in sorted(plan.prime_part_relics, key=disp):
-            relics = ", ".join(sorted(plan.prime_part_relics[pnorm]))
-            click.echo(f"  {disp(pnorm)}  <-  {relics}")
-
-        tiers = {items.relic_tier(r)
-                 for relics in plan.prime_part_relics.values() for r in relics}
+        for pp in result.prime:
+            click.echo(f"  {pp.part}  <-  {', '.join(pp.relics)}")
         click.echo("\n  Relic tiers to farm:")
-        for tier in sorted(tiers):
-            click.echo(f"    {tier}: {RELIC_TIER_GUIDE.get(tier, _GENERIC_TIER_HINT)}")
+        for t in result.tiers:
+            click.echo(f"    {t.tier}: {t.where}")
 
-    if plan.not_farmable:
-        vaulted = plan.vaulted_equipment()
+    if result.vaulted_equipment:
         click.echo(f"\nVaulted / not currently farmable "
-                   f"({len(plan.not_farmable)} prime part(s), "
-                   f"{len(vaulted)} fully-vaulted item(s)):")
-        for item in sorted(vaulted):
+                   f"({result.vaulted_part_count} prime part(s), "
+                   f"{len(result.vaulted_equipment)} fully-vaulted item(s)):")
+        for item in result.vaulted_equipment:
             click.echo(f"  - {item}")
 
-    if plan.no_mission_source:
+    if result.no_mission_source:
         click.echo(f"\nNot from mission drops — get elsewhere (market, clan dojo, "
                    f"syndicate, Baro, lich/sister, standing, quest, event) "
-                   f"({len(plan.no_mission_source)} item(s)):")
-        for item in sorted(plan.no_mission_source):
+                   f"({len(result.no_mission_source)} item(s)):")
+        for item in result.no_mission_source:
             click.echo(f"  - {item}")
+
+
+@cli.command()
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=8000, show_default=True, type=int)
+@click.option("--reload", is_flag=True, help="Auto-reload on code changes (dev).")
+def serve(host: str, port: int, reload: bool) -> None:
+    """Run the local web UI (FastAPI backend + built frontend)."""
+    try:
+        import uvicorn
+    except ImportError:
+        raise click.ClickException(
+            'Web extras not installed. Run:  pip install -e ".[web]"')
+    click.echo(f"Serving on http://{host}:{port}  (Ctrl+C to stop)")
+    uvicorn.run("warframe_routes.web:app", host=host, port=port, reload=reload)
 
 
 if __name__ == "__main__":
