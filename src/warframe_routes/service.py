@@ -53,6 +53,8 @@ class RouteResult:
     vaulted_equipment: list[str] = field(default_factory=list)
     vaulted_part_count: int = 0
     no_mission_source: list[str] = field(default_factory=list)
+    # display_name → https://cdn.warframestat.us/img/<imageName>
+    images: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -109,4 +111,48 @@ def plan_route(
     result.vaulted_equipment = sorted(plan.vaulted_equipment())
     result.vaulted_part_count = len(plan.not_farmable)
     result.no_mission_source = sorted(plan.no_mission_source)
+    result.images = _build_image_map(items_data, result)
     return result
+
+
+_CDN = "https://cdn.warframestat.us/img/"
+
+
+def _build_image_map(items_data: list[dict], result: RouteResult) -> dict[str, str]:
+    """Return display_name → CDN URL for every name that appears in the result."""
+    # Collect all display names we need images for.
+    relevant: set[str] = set()
+    for m in result.non_prime:
+        relevant.update(m.parts)
+    for pp in result.prime:
+        relevant.add(pp.part)
+    relevant.update(result.vaulted_equipment)
+    relevant.update(result.no_mission_source)
+
+    norm_relevant = {items.normalize(n) for n in relevant}
+
+    # Build normalized-name → CDN URL from the items dataset.
+    norm_to_url: dict[str, str] = {}
+    for it in items_data:
+        if not isinstance(it, dict):
+            continue
+        eq_name = it.get("name") or ""
+        img = it.get("imageName") or ""
+        if eq_name and img:
+            norm_to_url[items.normalize(eq_name)] = _CDN + img
+        # Component full display name = "<equipment> <component>", e.g.
+        # "Caliban Prime Blueprint". Also index the component part alone for
+        # fallback ("Blueprint" → blueprint.png) though we prefer the full name.
+        for comp in it.get("components") or []:
+            cname = comp.get("name") or ""
+            cimg = comp.get("imageName") or ""
+            if not (cname and cimg and eq_name):
+                continue
+            full = f"{eq_name} {cname}"
+            norm_to_url[items.normalize(full)] = _CDN + cimg
+
+    return {
+        name: norm_to_url[items.normalize(name)]
+        for name in relevant
+        if items.normalize(name) in norm_to_url
+    }

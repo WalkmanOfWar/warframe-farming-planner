@@ -346,9 +346,37 @@ function SpinIcon() {
   return <Loader2 size={16} style={{ transform: `rotate(${deg}deg)` }} />
 }
 
+/* ── Item icon ───────────────────────────────────────────── */
+
+function ItemIcon({ url, name, size = 28 }) {
+  const [ok, setOk] = useState(!!url)
+  if (!ok) return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: size, height: size, borderRadius: 6,
+      background: C.surface2, flexShrink: 0,
+    }}>
+      <Gem size={size * 0.55} color={C.border} />
+    </span>
+  )
+  return (
+    <img
+      src={url} alt={name}
+      onError={() => setOk(false)}
+      style={{
+        width: size, height: size, objectFit: 'contain',
+        borderRadius: 6, background: C.surface2, flexShrink: 0,
+        filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.6))',
+      }}
+    />
+  )
+}
+
 /* ── Results ─────────────────────────────────────────────── */
 
 function Results({ r }) {
+  const img = r.images || {}
+
   if (!r.missing_equipment) {
     return (
       <Card style={{ padding: 24, marginBottom: 16 }}>
@@ -381,7 +409,7 @@ function Results({ r }) {
             {r.non_prime.map((m, i) => (
               <div key={i}>
                 {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
-                <MissionRow index={i + 1} mission={m} />
+                <MissionRow index={i + 1} mission={m} images={img} />
               </div>
             ))}
           </div>
@@ -395,9 +423,7 @@ function Results({ r }) {
             title={`Prime — ${r.prime.length} part${r.prime.length !== 1 ? 's' : ''}`}
             sub="Farm a relic's tier, then crack it at a void fissure." />
           <div style={{ padding: '0 20px 20px' }}>
-            <div style={{
-              border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden',
-            }}>
+            <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
                   <tr style={{ background: C.surface2, borderBottom: `1px solid ${C.border}` }}>
@@ -408,8 +434,11 @@ function Results({ r }) {
                 <tbody>
                   {r.prime.map((p, i) => (
                     <tr key={p.part} style={i > 0 ? { borderTop: `1px solid ${C.border}` } : {}}>
-                      <td style={{ padding: '10px 16px', color: C.text, fontWeight: 600, whiteSpace: 'nowrap', paddingRight: 24, verticalAlign: 'top' }}>
-                        {p.part}
+                      <td style={{ padding: '10px 16px', verticalAlign: 'top', paddingRight: 24, whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <ItemIcon url={img[p.part]} name={p.part} size={28} />
+                          <span style={{ color: C.text, fontWeight: 600 }}>{p.part}</span>
+                        </div>
                       </td>
                       <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -442,14 +471,14 @@ function Results({ r }) {
       {r.vaulted_equipment.length > 0 && (
         <CollapsibleCard icon={<Lock size={15} color={C.muted} />}
           title="Vaulted / not currently farmable" count={r.vaulted_equipment.length}>
-          <ItemGrid items={r.vaulted_equipment} />
+          <ItemGrid items={r.vaulted_equipment} images={img} />
         </CollapsibleCard>
       )}
 
       {r.no_mission_source.length > 0 && (
         <CollapsibleCard icon={<ShoppingBag size={15} color={C.muted} />}
           title="Market / clan / syndicate / lich / Baro / quest" count={r.no_mission_source.length}>
-          <ItemGrid items={r.no_mission_source} />
+          <ItemGrid items={r.no_mission_source} images={img} />
         </CollapsibleCard>
       )}
     </div>
@@ -481,18 +510,18 @@ function SectionHeader({ icon, title, sub }) {
   )
 }
 
-function MissionRow({ index, mission }) {
+function MissionRow({ index, mission, images = {} }) {
   return (
     <div style={{ padding: '12px 0' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, minWidth: 20, textAlign: 'right' }}>{index}.</span>
         <span style={{ fontWeight: 700, color: C.text }}>{mission.node}</span>
         <Badge color={C.accent} bg={C.accentFaint}>{mission.game_mode}</Badge>
       </div>
-      <div style={{ paddingLeft: 28 }}>
+      <div style={{ paddingLeft: 28, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {mission.parts.map(p => (
-          <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <ChevronRight size={12} color={C.border} style={{ flexShrink: 0 }} />
+          <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ItemIcon url={images[p]} name={p} size={24} />
             <span style={{ fontSize: 13, color: C.muted }}>{p}</span>
           </div>
         ))}
@@ -535,16 +564,17 @@ function CollapsibleCard({ icon, title, count, children }) {
   )
 }
 
-function ItemGrid({ items }) {
+function ItemGrid({ items, images = {} }) {
   return (
-    <div style={{ columns: '2', columnGap: 24 }}>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+      gap: '6px 16px',
+    }}>
       {items.map(x => (
-        <div key={x} style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          fontSize: 13, color: C.muted, marginBottom: 6, breakInside: 'avoid',
-        }}>
-          <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.border, flexShrink: 0 }} />
-          {x}
+        <div key={x} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ItemIcon url={images[x]} name={x} size={24} />
+          <span style={{ fontSize: 13, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x}</span>
         </div>
       ))}
     </div>
