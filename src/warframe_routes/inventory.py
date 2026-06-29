@@ -15,9 +15,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
-def _normalize(name: str) -> str:
-    return name.strip().casefold()
+# Single source of truth for name matching, shared across the package.
+from .items import normalize as _normalize
 
 
 def load_item_list(path: str | Path) -> set[str]:
