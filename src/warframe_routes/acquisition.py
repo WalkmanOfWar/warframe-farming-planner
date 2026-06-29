@@ -35,6 +35,8 @@ class AcquisitionPlan:
     part_equipment: dict[str, str]            # normalized part -> owning equipment
     not_farmable: set[str] = field(default_factory=set)        # vaulted parts (norm)
     no_mission_source: set[str] = field(default_factory=set)   # equipment (display)
+    orphan_parts: dict[str, str] = field(default_factory=dict) # norm -> display; parts
+    # with /Recipes/ but no mission/relic drop (e.g. warframe main BPs from Market)
 
     def vaulted_equipment(self) -> set[str]:
         """Equipment whose every part is currently not farmable (fully vaulted)."""
@@ -82,6 +84,7 @@ def build_plan(
     part_equipment: dict[str, str] = {}
     direct_node_acc: dict[tuple[str, str], list] = {}     # (planet,node)->[p,n,m,parts]
     equipment_with_parts: set[str] = set()
+    routed_parts: set[str] = set()   # parts placed in prime or non-prime routes
 
     def register(pnorm, disp, equip):
         part_display[pnorm] = disp
@@ -108,6 +111,7 @@ def build_plan(
                     part_relics[pnorm].add(rnorm)
                     relic_display[rnorm] = base
                     register(pnorm, disp, equip_name)
+                    routed_parts.add(pnorm)
                 else:
                     parsed = parse_location(loc)
                     if not parsed:
@@ -117,6 +121,35 @@ def build_plan(
                         (planet, node_name), [planet, node_name, mode, set()])
                     slot[3].add(pnorm)
                     register(pnorm, disp, equip_name)
+                    routed_parts.add(pnorm)
+
+    # Detect orphan parts: have /Recipes/ and zero drop locations at all.
+    # Classic example: warframe main blueprints sold only in the Market.
+    # Parts with unrecognized drop locations (e.g. Sanctuary Onslaught for Baruuk)
+    # are NOT orphans — they have a source, we just can't route them as missions.
+    orphan_parts: dict[str, str] = {}
+    for equip_norm in needed_equipment:
+        it = index.get(equip_norm)
+        if not it:
+            continue
+        equip_name = it["name"]
+        for comp in it.get("components") or []:
+            if "/Recipes/" not in (comp.get("uniqueName") or ""):
+                continue
+            drops = comp.get("drops") or []
+            disp = (
+                next((d.get("type") for d in drops if d.get("type")), None)
+                or f"{equip_name} {comp.get('name', '')}".strip()
+            )
+            pnorm = normalize(disp)
+            if pnorm not in routed_parts:
+                # Only Market-only if truly no drop locations in the dataset.
+                has_location = any((d or {}).get("location", "").strip() for d in drops)
+                if not has_location:
+                    orphan_parts[pnorm] = disp
+                    part_display[pnorm] = disp
+                    part_equipment[pnorm] = equip_name
+                    equipment_with_parts.add(equip_name)
 
     # Which relics are currently in rotation (appear in the live drop tables)?
     available: dict[str, str] = {}
@@ -158,4 +191,5 @@ def build_plan(
         part_equipment=part_equipment,
         not_farmable=not_farmable,
         no_mission_source=no_mission_source,
+        orphan_parts=orphan_parts,
     )

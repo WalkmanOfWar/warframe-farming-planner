@@ -15,10 +15,10 @@ from pathlib import Path
 import requests
 
 ITEMS_URL = "https://api.warframestat.us/items"
-ITEMS_FIELDS = "name,uniqueName,vaulted,type,masterable,components"
+ITEMS_FIELDS = "name,uniqueName,vaulted,type,masterable,components,imageName"
 
 CACHE_DIR = Path.home() / ".cache" / "warframe-optimize-routes"
-CACHE_FILE = CACHE_DIR / "items.json"
+CACHE_FILE = CACHE_DIR / "items.v2.json"  # v2: added imageName field
 CACHE_TTL_SECONDS = 24 * 60 * 60
 
 # Relics appear in component drops with refinement suffixes; missionRewards uses
