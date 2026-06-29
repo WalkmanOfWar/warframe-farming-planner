@@ -1,109 +1,31 @@
-:root {
-  --bg: #0e1116;
-  --card: #161b22;
-  --card2: #1c232d;
-  --text: #d7dde5;
-  --muted: #8a94a3;
-  --gold: #d4b35a;
-  --accent: #4aa3df;
-  --border: #2a313c;
+@import "tailwindcss";
+
+@theme {
+  --color-bg:          #0e1116;
+  --color-surface:     #161b22;
+  --color-surface2:    #1c232d;
+  --color-border:      #30363d;
+  --color-gold:        #d4b35a;
+  --color-gold-dim:    #a8893e;
+  --color-accent:      #4aa3df;
+  --color-text:        #e6edf3;
+  --color-muted:       #8b949e;
+  --color-error:       #f85149;
+  --color-success:     #3fb950;
+  --color-lith:        #3a5a40;
+  --color-meso:        #4a4a8a;
+  --color-neo:         #6a4a8a;
+  --color-axi:         #8a6a3a;
+  --color-requiem:     #6a2a2a;
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
 }
-
-.wrap { max-width: 860px; margin: 0 auto; padding: 28px 18px 60px; }
-
-header h1 { margin: 0 0 4px; color: var(--gold); letter-spacing: .5px; }
-.sub { margin: 0 0 20px; color: var(--muted); }
-
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 18px;
-  margin-bottom: 16px;
-}
-
-label { display: block; margin-bottom: 14px; font-weight: 600; }
-.hint { font-weight: 400; color: var(--muted); font-size: 13px; }
-.ok { color: #6cc070; font-size: 13px; margin-left: 8px; }
-
-input, textarea {
-  width: 100%;
-  margin-top: 6px;
-  padding: 9px 11px;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  font: inherit;
-}
-input[type="file"] { padding: 7px; }
-input:focus, textarea:focus { outline: none; border-color: var(--accent); }
-
-button {
-  background: var(--gold);
-  color: #1a1a1a;
-  border: 0;
-  padding: 10px 20px;
-  border-radius: 7px;
-  font-weight: 700;
-  cursor: pointer;
-}
-button:disabled { opacity: .6; cursor: default; }
-
-.error { color: #e06c75; margin: 12px 0 0; }
-
-.summary { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-.stat {
-  flex: 1; min-width: 120px; background: var(--card); border: 1px solid var(--border);
-  border-radius: 10px; padding: 14px; text-align: center;
-}
-.stat .num { font-size: 26px; font-weight: 800; color: var(--gold); }
-.stat .lbl { color: var(--muted); font-size: 13px; }
-
-h2 { margin: 0 0 12px; color: var(--gold); font-size: 18px; }
-h3 { margin: 16px 0 8px; font-size: 15px; color: var(--text); }
-.note { color: var(--muted); margin: -4px 0 12px; }
-
-.mission { padding: 10px 0; border-top: 1px solid var(--border); }
-.mission:first-of-type { border-top: 0; }
-.node { font-weight: 600; }
-.mode { color: var(--accent); font-size: 12px; margin-left: 8px; }
-.mission ul { margin: 6px 0 0; padding-left: 22px; color: var(--text); }
-
-table.prime { width: 100%; border-collapse: collapse; }
-table.prime th { text-align: left; color: var(--muted); font-size: 13px; padding: 6px 8px; }
-table.prime td { padding: 7px 8px; border-top: 1px solid var(--border); vertical-align: top; }
-.relic {
-  display: inline-block; background: var(--card2); border: 1px solid var(--border);
-  border-radius: 5px; padding: 2px 7px; margin: 2px 4px 2px 0; font-size: 12px;
-}
-
-.tiers { margin-top: 8px; }
-.tier { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
-.badge { font-weight: 700; border-radius: 5px; padding: 2px 8px; font-size: 12px; min-width: 48px; text-align: center; }
-.t-lith { background: #3a5a40; }
-.t-meso { background: #4a4a8a; }
-.t-neo  { background: #6a4a8a; }
-.t-axi  { background: #8a6a3a; }
-.t-requiem { background: #6a2a2a; }
-
-.collapse {
-  background: transparent; color: var(--text); font-weight: 600; padding: 0;
-  font-size: 15px; width: 100%; text-align: left;
-}
-.collapse-body { margin-top: 12px; }
-ul.cols { columns: 2; gap: 24px; margin: 0; padding-left: 18px; color: var(--muted); }
-ul.cols li { break-inside: avoid; }
-
-footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 30px; }
-
-@media (max-width: 560px) { ul.cols { columns: 1; } }

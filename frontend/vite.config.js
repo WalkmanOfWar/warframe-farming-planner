@@ -1,10 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import { fileURLToPath } from 'url'
+import path from 'path'
 
-// Dev server proxies /api to the FastAPI backend so `fetch('/api/...')`
-// works the same in dev and in the built (FastAPI-served) app.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [tailwindcss(), react()],
+  resolve: {
+    alias: { '@': path.resolve(__dirname, 'src') },
+  },
   server: {
     proxy: { '/api': 'http://127.0.0.1:8000' },
   },
