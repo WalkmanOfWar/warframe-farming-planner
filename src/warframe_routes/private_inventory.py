@@ -131,3 +131,46 @@ def owned_parts(inventory: dict, items_data: list[dict]) -> set[str]:
     return {
         index[u] for u in collect_item_types(inventory) if u in index
     }
+
+
+def pending_owned(
+    inventory: dict, items_data: list[dict]
+) -> tuple[set[str], set[str]]:
+    """Equipment and parts currently building in the foundry (PendingRecipes).
+
+    When the *main* blueprint of a warframe/weapon is building (component named
+    "Blueprint"), all its sub-parts have already been consumed — the item is
+    committed and should count as owned so it disappears from the farming route.
+    When a *sub-component* (Chassis / Neuroptics / Systems …) is building, count
+    it as an owned loose part.
+
+    Returns ``(equipment_normalized_names, part_display_names)``.
+    """
+    recipe_meta: dict[str, tuple[str, str, str]] = {}  # uniq → (item_name, comp_name, part_disp)
+    for it in items_data:
+        item_name = it.get("name", "")
+        for comp in it.get("components") or []:
+            uniq = comp.get("uniqueName", "")
+            if not uniq or "/Recipes/" not in uniq:
+                continue
+            drops = comp.get("drops") or []
+            part_disp = next(
+                (d["type"] for d in drops if isinstance(d, dict) and d.get("type")),
+                f"{item_name} {comp.get('name', '')}".strip(),
+            )
+            recipe_meta[uniq] = (item_name, comp.get("name", ""), part_disp)
+
+    equipment: set[str] = set()
+    parts: set[str] = set()
+    for entry in inventory.get("PendingRecipes", []):
+        if not isinstance(entry, dict):
+            continue
+        uniq = entry.get("ItemType", "")
+        if uniq not in recipe_meta:
+            continue
+        item_name, comp_name, part_disp = recipe_meta[uniq]
+        if comp_name == "Blueprint":
+            equipment.add(items.normalize(item_name))
+        else:
+            parts.add(part_disp)
+    return equipment, parts

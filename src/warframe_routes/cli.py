@@ -118,6 +118,9 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     if inv is not None:
         types = private_inventory.collect_item_types(inv)
         have |= {n.strip().casefold() for n in sync.resolve_names(types, items_data)}
+        # Items building in the foundry are committed — treat as owned.
+        pending_equip, _pending_parts = private_inventory.pending_owned(inv, items_data)
+        have |= pending_equip
     # A live (nonce) inventory already lists all owned gear, so skip the public
     # profile then; otherwise the profile still adds your mastered gear.
     if account_id and not inv_is_full:
@@ -141,6 +144,8 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     if inv is not None:
         owned_parts |= {n.strip().casefold()
                         for n in private_inventory.owned_parts(inv, items_data)}
+        _, pending_parts = private_inventory.pending_owned(inv, items_data)
+        owned_parts |= {n.strip().casefold() for n in pending_parts}
     if have_parts:
         owned_parts |= inventory.load_item_list(have_parts)
 
