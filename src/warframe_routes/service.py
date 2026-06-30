@@ -53,6 +53,10 @@ class PrimeRelic:
     cracks: float | None = None
     runs: float | None = None
     minutes: float | None = None
+    # Best node to farm this relic (fastest expected time per relic drop).
+    farm_node: str | None = None   # e.g. "Void / Hepit"
+    farm_mode: str | None = None   # e.g. "Capture"
+    farm_chance: float | None = None  # drop chance % at that node
 
 
 @dataclass
@@ -150,7 +154,7 @@ def _prime_relic_plan(plan, prime_needed: set[str], refinement: str,
     ]
 
     def per_crack_time(rnorm: str) -> float:
-        r_chance, r_mode, r_rot = plan.relic_source[rnorm]
+        r_chance, r_mode, r_rot, _node = plan.relic_source[rnorm]
         if r_chance <= 0:
             return float("inf")
         rot_factor = effort.rotation_factor(r_rot)
@@ -284,7 +288,7 @@ def plan_route(
             rnorm = items.normalize(step.node.name)
             cracks = effort.mission_runs(
                 [dchance(p, rnorm) for p in step.covers])
-            r_chance, _, _ = plan.relic_source[rnorm]
+            r_chance, r_mode, _r_rot, r_node = plan.relic_source[rnorm]
             minutes = cracks * per_crack_time(rnorm)
             runs = cracks * (100.0 / r_chance + 1.0)  # relic-farm runs + cracks
             tier = items.relic_tier(step.node.name)
@@ -292,7 +296,9 @@ def plan_route(
             relics_out.append(PrimeRelic(
                 relic=step.node.name, tier=tier,
                 parts=sorted(disp(p) for p in step.covers),
-                cracks=_runs(cracks), runs=_runs(runs), minutes=_mins(minutes)))
+                cracks=_runs(cracks), runs=_runs(runs), minutes=_mins(minutes),
+                farm_node=r_node, farm_mode=r_mode,
+                farm_chance=round(r_chance, 2) if r_chance else None))
         # Fastest (cheapest) relics first; unobtainable last.
         relics_out.sort(key=lambda r: (r.minutes is None, r.minutes or 0))
         result.prime = relics_out
