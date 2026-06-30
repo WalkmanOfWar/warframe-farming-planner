@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import catalog, data, inventory, items, private_inventory, service, sync
+from . import catalog, data, inventory, items, private_inventory, service, sync, worldstate
 
 app = FastAPI(title="Warframe Farming Planner")
 
@@ -87,6 +87,11 @@ def route(req: RouteRequest) -> dict:
     want = (_norm(req.wishlist) if req.wishlist
             else _norm(catalog.all_targets(items_data)))
 
+    try:
+        syndicate_missions = worldstate.load_syndicate_missions(force_refresh=req.refresh)
+    except Exception:
+        syndicate_missions = None  # worldstate unavailable — proceed without filtering
+
     result = service.plan_route(
         owned=have,
         want=want,
@@ -95,6 +100,7 @@ def route(req: RouteRequest) -> dict:
         mission_rewards=data.load_raw(force_refresh=req.refresh),
         refinement=req.refinement,
         transient_rewards=data.load_transient_raw(force_refresh=req.refresh),
+        syndicate_missions=syndicate_missions,
     )
     return result.to_dict()
 

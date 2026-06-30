@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
-from . import acquisition, effort, inventory, items, optimize
+from . import acquisition, effort, inventory, items, optimize, worldstate
 from .data import Node
 
 # Best community spots to farm each relic tier (you farm a tier, not a relic).
@@ -192,6 +192,7 @@ def plan_route(
     mission_rewards: dict,
     refinement: str = "Intact",
     transient_rewards: list | None = None,
+    syndicate_missions: list | None = None,
 ) -> RouteResult:
     """Assemble a full route plan from normalized ownership/target sets.
 
@@ -205,7 +206,10 @@ def plan_route(
     if not needed_equipment:
         return result
 
-    plan = acquisition.build_plan(items_data, mission_rewards, needed_equipment)
+    active_bounty = (worldstate.active_bounty_items(syndicate_missions)
+                     if syndicate_missions is not None else None)
+    plan = acquisition.build_plan(items_data, mission_rewards, needed_equipment,
+                                  active_bounty=active_bounty)
 
     # Subtract loose parts the player already holds.
     plan.direct_parts -= owned_parts
