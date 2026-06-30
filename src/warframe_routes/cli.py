@@ -220,7 +220,7 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
 
     if result.no_part_source:
         n = sum(len(p) for p in result.no_part_source.values())
-        click.echo(f"\nBuy from Market — blueprints with no mission drop "
+        click.echo(f"\nNo drop source in database (Market / Duviri / Nightwave / …) "
                    f"({n} part(s)):")
         for equip, parts in result.no_part_source.items():
             click.echo(f"  {equip}:")

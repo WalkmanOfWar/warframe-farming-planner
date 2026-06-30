@@ -612,7 +612,7 @@ function Results({ r }) {
 
       {Object.keys(r.no_part_source || {}).length > 0 && (
         <CollapsibleCard icon={<ShoppingBag size={15} color={C.gold} />}
-          title="Buy from Market (Blueprints — no mission drop)"
+          title="No drop source in database (Market / Duviri / Nightwave / etc.)"
           count={Object.values(r.no_part_source).reduce((s, a) => s + a.length, 0)}>
           {Object.entries(r.no_part_source).map(([equip, parts]) => (
             <div key={equip} style={{ marginBottom: 16 }}>
