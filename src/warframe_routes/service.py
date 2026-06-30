@@ -79,6 +79,9 @@ class RouteResult:
     special_source: dict[str, list[str]] = field(default_factory=dict)
     # display_name → https://cdn.warframestat.us/img/<imageName>
     images: dict[str, str] = field(default_factory=dict)
+    # display_name → WFCD type string (e.g. "Warframe", "Melee", "Rifle", …)
+    # populated for all items in no_part_source and no_mission_source.
+    item_types: dict[str, str] = field(default_factory=dict)
     # Expected-effort summary. refinement = relic refinement assumed for Primes.
     refinement: str = "Intact"
     total_minutes: float | None = None      # non-Prime missions + Prime parts
@@ -304,6 +307,22 @@ def plan_route(
         for loc in locs:
             src_map[loc].append(part_name)
     result.special_source = {src: sorted(set(parts)) for src, parts in sorted(src_map.items())}
+
+    # Type index: normalized name → WFCD type string, for UI grouping.
+    type_idx: dict[str, str] = {
+        items.normalize(it.get("name", "")): it.get("type", "")
+        for it in items_data if it.get("name")
+    }
+    type_map: dict[str, str] = {}
+    for equip in result.no_part_source:
+        t = type_idx.get(items.normalize(equip))
+        if t:
+            type_map[equip] = t
+    for item in result.no_mission_source:
+        t = type_idx.get(items.normalize(item))
+        if t:
+            type_map[item] = t
+    result.item_types = type_map
 
     result.images = _build_image_map(items_data, result, plan.part_equipment)
 
