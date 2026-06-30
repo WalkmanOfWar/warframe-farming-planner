@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock,
-  Crosshair, Gem, Loader2, Lock, MapPin, ShoppingBag,
+  Copy, Crosshair, Gem, Loader2, Lock, MapPin, ShoppingBag,
   Swords, Upload, X, Zap,
 } from 'lucide-react'
 
@@ -50,17 +50,32 @@ function fmtHours(minutes) {
   return h ? `${h}h ${m % 60}m` : `${m}m`
 }
 
-// Inline "~N runs · ~Xh Ym" effort tag; null when effort is unknown.
-function EffortTag({ runs, minutes }) {
+// Inline "~N runs · ~Xh Ym" effort tag with optional hover tooltip.
+function EffortTag({ runs, minutes, tooltip }) {
+  const [hov, setHov] = useState(false)
   if (runs == null || minutes == null) return null
   return (
-    <span style={{
-      fontSize: 12, fontWeight: 600, color: C.accent,
-      background: C.accentFaint, border: `1px solid ${C.accentBorder}`,
-      borderRadius: 6, padding: '1px 8px', whiteSpace: 'nowrap',
-    }}>
-      ~{runs} runs · ~{fmtHours(minutes)}
-    </span>
+    <div style={{ position: 'relative', display: 'inline-flex' }}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}>
+      <span style={{
+        fontSize: 12, fontWeight: 600, color: C.accent,
+        background: C.accentFaint, border: `1px solid ${C.accentBorder}`,
+        borderRadius: 6, padding: '1px 8px', whiteSpace: 'nowrap', cursor: tooltip ? 'help' : 'default',
+      }}>
+        ~{runs} runs · ~{fmtHours(minutes)}
+      </span>
+      {hov && tooltip && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)', right: 0, zIndex: 10,
+          background: C.surface2, border: `1px solid ${C.accentBorder}`,
+          borderRadius: 8, padding: '10px 12px', minWidth: 200, maxWidth: 280,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.6)', fontSize: 12, lineHeight: 1.6,
+          whiteSpace: 'normal',
+        }}>
+          {tooltip}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -218,6 +233,13 @@ const TYPE_ORDER = [
   'Pets', 'Companion Weapon', 'Sentinel',
 ]
 
+// Short acquisition hints shown under category headers in no_mission_source.
+const TYPE_NOTES = {
+  'Lich Weapon':   'Convert or trade a Kuva Lich',
+  'Sister Weapon': 'Convert or trade a Tenet Sister',
+  'Archwing':      'Archwing Exterminate / Rush missions',
+}
+
 function groupByType(keys, typeMap) {
   const groups = {}
   for (const key of keys) {
@@ -246,6 +268,60 @@ function RotationBadge({ rotation }) {
   )
 }
 
+function exportText(r) {
+  const lines = []
+  const eff = (runs, mins) => runs != null ? `  (~${runs} runs · ~${fmtHours(mins)})` : ''
+
+  if (r.non_prime?.length) {
+    lines.push('=== NON-PRIME MISSIONS ===')
+    r.non_prime.forEach((m, i) => {
+      const mode = m.game_mode && m.game_mode !== 'Unknown' ? ` [${m.game_mode}]` : ''
+      lines.push(`${i + 1}. ${m.node}${mode}${eff(m.runs, m.minutes)}`)
+      m.parts.forEach(p => {
+        const pr = (m.part_runs || {})[p]
+        lines.push(`   - ${p}${pr != null ? `  (~${pr} runs)` : ''}`)
+      })
+    })
+  }
+  if (r.prime?.length) {
+    lines.push('\n=== PRIME RELICS ===')
+    r.prime.forEach(pr => {
+      lines.push(`${pr.relic}${eff(pr.runs, pr.minutes)}`)
+      pr.parts.forEach(p => lines.push(`   - ${p}`))
+    })
+    if (r.tiers?.length) {
+      lines.push('\nRelic tiers to farm:')
+      r.tiers.forEach(t => lines.push(`  ${t.tier}: ${t.where}`))
+    }
+  }
+  if (r.vaulted_equipment?.length) {
+    lines.push('\n=== VAULTED / NOT FARMABLE ===')
+    r.vaulted_equipment.forEach(x => lines.push(`  - ${x}`))
+  }
+  if (Object.keys(r.special_source || {}).length) {
+    lines.push('\n=== OTHER SOURCES ===')
+    Object.entries(r.special_source).forEach(([src, parts]) => {
+      lines.push(`${src}:`)
+      parts.forEach(p => lines.push(`  - ${p}`))
+    })
+  }
+  if (Object.keys(r.no_part_source || {}).length) {
+    lines.push('\n=== NO DROP SOURCE (MARKET / DUVIRI / NIGHTWAVE) ===')
+    Object.entries(r.no_part_source).forEach(([eq, parts]) => {
+      lines.push(`${eq}:`)
+      parts.forEach(p => lines.push(`  - ${p}`))
+    })
+  }
+  if (r.no_mission_source?.length) {
+    lines.push('\n=== NOT FROM MISSION DROPS ===')
+    r.no_mission_source.forEach(x => lines.push(`  - ${x}`))
+  }
+  if (r.total_minutes != null) {
+    lines.push(`\nEstimated total: ~${fmtHours(r.total_minutes)} (${r.refinement} relics${r.squad_radiant ? ', 4× squad cracking' : ', solo'})`)
+  }
+  return lines.join('\n')
+}
+
 /* ── Main App ─────────────────────────────────────────────── */
 
 export default function App() {
@@ -254,6 +330,7 @@ export default function App() {
   const [wishlist, setWishlist] = useState('')
   const [refinement, setRefinement] = useState(() => localStorage.getItem('wf_refinement') || 'Intact')
   const [squadRadiant, setSquadRadiant] = useState(() => localStorage.getItem('wf_squad_radiant') === 'true')
+  const [forceRefresh, setForceRefresh] = useState(false)
 
   useEffect(() => { localStorage.setItem('wf_account_id', accountId) }, [accountId])
   useEffect(() => { localStorage.setItem('wf_nonce', nonce) }, [nonce])
@@ -300,6 +377,7 @@ export default function App() {
         wishlist: wishlist.trim() ? lines(wishlist) : null,
         refinement,
         squad_radiant: squadRadiant,
+        refresh: forceRefresh,
         inventory,
       }
       const res = await fetch(API, {
@@ -422,6 +500,20 @@ export default function App() {
                 </span>
               </span>
             </label>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 10, marginTop: 8,
+              cursor: 'pointer', fontSize: 14, color: C.text,
+            }}>
+              <input type="checkbox" checked={forceRefresh}
+                onChange={e => setForceRefresh(e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: C.gold, cursor: 'pointer' }} />
+              <span>
+                Force refresh data
+                <span style={{ marginLeft: 6, fontSize: 12, color: C.muted }}>
+                  — re-download drop tables &amp; worldstate (bypasses 1-day cache)
+                </span>
+              </span>
+            </label>
           </Field>
 
           <Btn onClick={plan} disabled={loading} fullWidth>
@@ -450,6 +542,7 @@ export default function App() {
                   ? `Stored result from ${new Date(result._savedAt).toLocaleString()}`
                   : 'Route result'}
               </span>
+              <CopyButton result={result} />
               <button onClick={() => {
                 setResult(null)
                 try { localStorage.removeItem('wf_last_result') } catch {}
@@ -493,6 +586,28 @@ function UploadZone({ onClick }) {
     >
       <Upload size={16} />
       Click to upload inventory.json
+    </button>
+  )
+}
+
+function CopyButton({ result }) {
+  const [copied, setCopied] = useState(false)
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(exportText(result))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {}
+  }
+  return (
+    <button onClick={copy} style={{
+      background: 'none', border: 'none', cursor: 'pointer',
+      display: 'flex', alignItems: 'center', gap: 4,
+      color: copied ? C.success : C.muted, fontSize: 12, padding: '2px 6px',
+      transition: 'color .2s',
+    }}>
+      {copied ? <CheckCircle2 size={12} /> : <Copy size={12} />}
+      {copied ? 'Copied!' : 'Copy'}
     </button>
   )
 }
@@ -648,6 +763,20 @@ function Results({ r }) {
         </Card>
       )}
 
+      {/* Non-prime uncovered parts */}
+      {r.non_prime_uncovered?.length > 0 && !sq && (
+        <CollapsibleCard
+          icon={<AlertCircle size={15} color={C.error} />}
+          title="Parts with no routeable mission node"
+          count={r.non_prime_uncovered.length}
+          accentColor={C.error}>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: C.muted }}>
+            These parts have drop data in the database but no planet/node location the optimizer can route. They may come from special sources not in the standard mission list.
+          </p>
+          <ItemGrid items={r.non_prime_uncovered} images={img} />
+        </CollapsibleCard>
+      )}
+
       {/* Prime */}
       {r.prime.length > 0 && filteredPrime.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
@@ -656,7 +785,13 @@ function Results({ r }) {
             sub={`Farm each relic's tier, then crack it at a void fissure. A relic shared by several parts is cracked once for all of them.${r.squad_radiant ? ' Time estimated for 4× squad Radiant sharing.' : ''}`} />
           <div style={{ padding: '0 20px 20px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {filteredPrime.map((pr, i) => (
+              {filteredPrime.map((pr, i) => {
+                const relicTooltip = pr.cracks != null
+                  ? <><div style={{ fontWeight: 700, color: C.text, marginBottom: 6 }}>Effort breakdown:</div>
+                      <div style={{ color: C.muted, marginBottom: 2 }}>~{pr.cracks} cracks to get all parts</div>
+                      <div style={{ color: C.muted }}>~{pr.runs} total runs (farm + crack)</div></>
+                  : null
+                return (
                 <div key={pr.relic}>
                   {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
                   <div style={{ padding: '12px 0' }}>
@@ -667,7 +802,7 @@ function Results({ r }) {
                         <span style={{ fontSize: 12, color: C.muted }}>~{pr.cracks} cracks</span>
                       )}
                       <span style={{ flex: 1 }} />
-                      <EffortTag runs={pr.runs} minutes={pr.minutes} />
+                      <EffortTag runs={pr.runs} minutes={pr.minutes} tooltip={relicTooltip} />
                     </div>
                     <div style={{ paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {pr.parts.map(p => (
@@ -679,22 +814,34 @@ function Results({ r }) {
                     </div>
                   </div>
                 </div>
-              ))}
+              )})}
+
             </div>
 
-            {r.tiers.length > 0 && (
-              <div style={{ marginTop: 20 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.muted, marginBottom: 10 }}>
-                  Relic tiers to farm
-                </div>
-                {r.tiers.map(t => (
-                  <div key={t.tier} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                    <TierBadge tier={t.tier} />
-                    <span style={{ color: C.muted, fontSize: 14 }}>{t.where}</span>
+            {r.tiers.length > 0 && (() => {
+              const tierRuns = {}
+              filteredPrime.forEach(pr => {
+                if (pr.runs != null) tierRuns[pr.tier] = (tierRuns[pr.tier] || 0) + pr.runs
+              })
+              return (
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.muted, marginBottom: 10 }}>
+                    Relic tiers to farm
                   </div>
-                ))}
-              </div>
-            )}
+                  {r.tiers.map(t => (
+                    <div key={t.tier} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+                      <TierBadge tier={t.tier} />
+                      <span style={{ color: C.muted, fontSize: 14, flex: 1 }}>{t.where}</span>
+                      {tierRuns[t.tier] != null && (
+                        <span style={{ fontSize: 12, color: C.accent, fontWeight: 600 }}>
+                          ~{Math.round(tierRuns[t.tier])} runs total
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         </Card>
       )}
@@ -711,7 +858,7 @@ function Results({ r }) {
           title="Market / clan / syndicate / lich / Baro / quest" count={r.no_mission_source.length}>
           {groupByType(r.no_mission_source, r.item_types || {}).map(([type, items]) => (
             <div key={type} style={{ marginBottom: 16 }}>
-              <TypeLabel label={type} />
+              <TypeLabel label={type} note={TYPE_NOTES[type]} />
               <ItemGrid items={items} images={img} />
             </div>
           ))}
@@ -821,6 +968,16 @@ function Highlight({ text, query }) {
 }
 
 function MissionRow({ index, mission, images = {}, search = '' }) {
+  const partRunEntries = Object.entries(mission.part_runs || {}).filter(([, r]) => r != null)
+  const tooltip = partRunEntries.length > 1
+    ? <><div style={{ fontWeight: 700, color: C.text, marginBottom: 6 }}>Per-part expected runs:</div>
+        {partRunEntries.map(([p, r]) => (
+          <div key={p} style={{ color: C.muted, marginBottom: 2 }}>
+            <span style={{ color: C.accent }}>~{r}×</span> {p}
+          </div>
+        ))}</>
+    : null
+
   return (
     <div style={{ padding: '12px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -833,7 +990,7 @@ function MissionRow({ index, mission, images = {}, search = '' }) {
         )}
         {mission.rotation && <RotationBadge rotation={mission.rotation} />}
         <span style={{ flex: 1 }} />
-        <EffortTag runs={mission.runs} minutes={mission.minutes} />
+        <EffortTag runs={mission.runs} minutes={mission.minutes} tooltip={tooltip} />
       </div>
       <div style={{ paddingLeft: 28, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {mission.parts.map(p => {
@@ -890,15 +1047,17 @@ function CollapsibleCard({ icon, title, count, children, accentColor }) {
   )
 }
 
-function TypeLabel({ label }) {
+function TypeLabel({ label, note }) {
   return (
     <div style={{
-      fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
-      textTransform: 'uppercase', color: C.muted,
+      display: 'flex', alignItems: 'baseline', gap: 8,
       borderBottom: `1px solid ${C.border}`,
       paddingBottom: 4, marginBottom: 10,
     }}>
-      {label}
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.muted }}>
+        {label}
+      </span>
+      {note && <span style={{ fontSize: 11, color: C.muted, opacity: 0.7 }}>{note}</span>}
     </div>
   )
 }
