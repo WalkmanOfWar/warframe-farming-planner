@@ -62,6 +62,15 @@ DEFAULT_MODE_MINUTES = 4.0
 # A void-fissure crack run (typically a Capture fissure), incl. loading.
 FISSURE_MINUTES = 2.5
 
+# Endless rewards come on an A,A,B,C cadence, so a deeper rotation costs more
+# real time per reward: rotation A lands first, B on the 3rd drop, C on the 4th.
+# Multiplier on the per-rotation mode time; a non-rotational drop is 1x.
+ROTATION_FACTOR = {None: 1.0, "A": 1.0, "B": 3.0, "C": 4.0}
+
+
+def rotation_factor(rotation: str | None) -> float:
+    return ROTATION_FACTOR.get(rotation, 1.0)
+
 # Order matters: better refinement = higher part chance but costs void traces.
 REFINEMENTS = ("Intact", "Exceptional", "Flawless", "Radiant")
 

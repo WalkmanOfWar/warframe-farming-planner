@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react'
 import {
   AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock,
   Crosshair, Gem, Loader2, Lock, MapPin, ShoppingBag,
-  Swords, Upload, X,
+  Swords, Upload, X, Zap,
 } from 'lucide-react'
 
 const API = '/api/route'
@@ -27,6 +27,9 @@ const C = {
   success:     '#3fb950',
   successFaint:'rgba(63,185,80,0.08)',
   successBorder:'rgba(63,185,80,0.3)',
+  event:       '#e8a020',
+  eventFaint:  'rgba(232,160,32,0.10)',
+  eventBorder: 'rgba(232,160,32,0.30)',
   lith:        '#2d5c35',
   meso:        '#3a3a7a',
   neo:         '#5a3a7a',
@@ -201,6 +204,22 @@ function TierBadge({ tier }) {
       fontSize: 12, fontWeight: 700,
     }}>
       {tier}
+    </span>
+  )
+}
+
+const ROT_COLOR = { A: '#3a7a4a', B: '#3a5a7a', C: '#7a3a5a' }
+
+function RotationBadge({ rotation }) {
+  if (!rotation) return null
+  return (
+    <span style={{
+      display: 'inline-block', textAlign: 'center',
+      background: ROT_COLOR[rotation] || C.surface2, color: '#fff',
+      borderRadius: 6, padding: '2px 8px',
+      fontSize: 11, fontWeight: 700,
+    }}>
+      Rot {rotation}
     </span>
   )
 }
@@ -477,7 +496,7 @@ function Results({ r }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
         <StatCard icon={<Swords size={16} color={C.gold} />}  n={r.missing_equipment} label="missing" />
         <StatCard icon={<MapPin size={16} color={C.gold} />}  n={nonPrimeParts}        label="non-prime" />
-        <StatCard icon={<Gem size={16} color={C.gold} />}     n={r.prime.length}       label="prime" />
+        <StatCard icon={<Gem size={16} color={C.gold} />}     n={r.prime_part_count}   label="prime" />
         <StatCard icon={<Lock size={16} color={C.gold} />}    n={r.vaulted_part_count} label="vaulted" />
       </div>
 
@@ -530,47 +549,34 @@ function Results({ r }) {
       {r.prime.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <SectionHeader icon={<Gem size={15} color={C.gold} />}
-            title={`Prime — ${r.prime.length} part${r.prime.length !== 1 ? 's' : ''}`}
-            sub="Farm a relic's tier, then crack it at a void fissure." />
+            title={`Prime — crack ${r.prime.length} relic${r.prime.length !== 1 ? 's' : ''} for ${r.prime_part_count} part${r.prime_part_count !== 1 ? 's' : ''}`}
+            sub="Farm each relic's tier, then crack it at a void fissure. A relic shared by several parts is cracked once for all of them." />
           <div style={{ padding: '0 20px 20px' }}>
-            <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                <thead>
-                  <tr style={{ background: C.surface2, borderBottom: `1px solid ${C.border}` }}>
-                    <th style={{ textAlign: 'left', padding: '10px 16px', color: C.muted, fontWeight: 500 }}>Part</th>
-                    <th style={{ textAlign: 'left', padding: '10px 16px', color: C.muted, fontWeight: 500 }}>In-rotation relics (★ cheapest)</th>
-                    <th style={{ textAlign: 'right', padding: '10px 16px', color: C.muted, fontWeight: 500, whiteSpace: 'nowrap' }}>Effort</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.prime.map((p, i) => (
-                    <tr key={p.part} style={i > 0 ? { borderTop: `1px solid ${C.border}` } : {}}>
-                      <td style={{ padding: '10px 16px', verticalAlign: 'top', paddingRight: 24, whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <ItemIcon url={img[p.part]} name={p.part} size={28} />
-                          <span style={{ color: C.text, fontWeight: 600 }}>{p.part}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {r.prime.map((pr, i) => (
+                <div key={pr.relic}>
+                  {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
+                  <div style={{ padding: '12px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                      <TierBadge tier={pr.tier} />
+                      <span style={{ fontWeight: 700, color: C.text }}>{pr.relic}</span>
+                      {pr.cracks != null && (
+                        <span style={{ fontSize: 12, color: C.muted }}>~{pr.cracks} cracks</span>
+                      )}
+                      <span style={{ flex: 1 }} />
+                      <EffortTag runs={pr.runs} minutes={pr.minutes} />
+                    </div>
+                    <div style={{ paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {pr.parts.map(p => (
+                        <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <ItemIcon url={img[p]} name={p} size={24} />
+                          <span style={{ fontSize: 13, color: C.muted }}>{p}</span>
                         </div>
-                      </td>
-                      <td style={{ padding: '10px 16px', verticalAlign: 'top' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {p.relics.map(rel => (
-                            <Badge key={rel}
-                              color={rel === p.best_relic ? C.gold : undefined}
-                              bg={rel === p.best_relic ? C.goldFaint : undefined}>
-                              {rel === p.best_relic ? `★ ${rel}` : rel}
-                            </Badge>
-                          ))}
-                        </div>
-                      </td>
-                      <td style={{ padding: '10px 16px', verticalAlign: 'top', textAlign: 'right' }}>
-                        {p.runs != null
-                          ? <EffortTag runs={p.runs} minutes={p.minutes} />
-                          : <span style={{ fontSize: 12, color: C.muted }}>—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {r.tiers.length > 0 && (
@@ -606,7 +612,7 @@ function Results({ r }) {
 
       {Object.keys(r.no_part_source || {}).length > 0 && (
         <CollapsibleCard icon={<ShoppingBag size={15} color={C.gold} />}
-          title="Buy from Market (Blueprints — no mission drop)"
+          title="No drop source in database (Market / Duviri / Nightwave / etc.)"
           count={Object.values(r.no_part_source).reduce((s, a) => s + a.length, 0)}>
           {Object.entries(r.no_part_source).map(([equip, parts]) => (
             <div key={equip} style={{ marginBottom: 16 }}>
@@ -632,6 +638,28 @@ function Results({ r }) {
                 color: C.accent, textTransform: 'uppercase', marginBottom: 8,
               }}>{src}</div>
               <ItemGrid items={parts} images={img} />
+            </div>
+          ))}
+        </CollapsibleCard>
+      )}
+
+      {Object.keys(r.event_source || {}).length > 0 && (
+        <CollapsibleCard
+          icon={<Zap size={15} color={C.event} />}
+          title="Also available from current events / alerts"
+          count={Object.values(r.event_source).reduce((s, a) => s + a.length, 0)}
+          accentColor={C.event}>
+          <p style={{ margin: '0 0 14px', fontSize: 13, color: C.muted }}>
+            These needed items also drop from transient / rotating objectives active right now.
+            Grinding them gives you progress on multiple goals simultaneously.
+          </p>
+          {Object.entries(r.event_source).map(([src, its]) => (
+            <div key={src} style={{ marginBottom: 14 }}>
+              <div style={{
+                fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+                color: C.event, textTransform: 'uppercase', marginBottom: 8,
+              }}>{src}</div>
+              <ItemGrid items={its} images={img} />
             </div>
           ))}
         </CollapsibleCard>
@@ -674,6 +702,7 @@ function MissionRow({ index, mission, images = {} }) {
         {mission.game_mode && mission.game_mode !== 'Unknown' && (
           <Badge color={C.accent} bg={C.accentFaint}>{mission.game_mode}</Badge>
         )}
+        {mission.rotation && <RotationBadge rotation={mission.rotation} />}
         <span style={{ flex: 1 }} />
         <EffortTag runs={mission.runs} minutes={mission.minutes} />
       </div>
@@ -695,9 +724,10 @@ function MissionRow({ index, mission, images = {} }) {
   )
 }
 
-function CollapsibleCard({ icon, title, count, children }) {
+function CollapsibleCard({ icon, title, count, children, accentColor }) {
   const [open, setOpen] = useState(false)
   const [hov, setHov] = useState(false)
+  const countColor = accentColor || C.muted
   return (
     <Card style={{ marginBottom: 12, overflow: 'hidden' }}>
       <button
@@ -715,7 +745,7 @@ function CollapsibleCard({ icon, title, count, children }) {
         <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{title}</span>
         <span style={{
           fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
-          background: C.surface2, color: C.muted, border: `1px solid ${C.border}`,
+          background: C.surface2, color: countColor, border: `1px solid ${C.border}`,
         }}>{count}</span>
         <ChevronDown size={16} color={C.muted}
           style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s', flexShrink: 0 }} />

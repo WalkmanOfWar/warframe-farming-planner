@@ -118,6 +118,9 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     if inv is not None:
         types = private_inventory.collect_item_types(inv)
         have |= {n.strip().casefold() for n in sync.resolve_names(types, items_data)}
+        # Items building in the foundry are committed — treat as owned.
+        pending_equip, _pending_parts = private_inventory.pending_owned(inv, items_data)
+        have |= pending_equip
     # A live (nonce) inventory already lists all owned gear, so skip the public
     # profile then; otherwise the profile still adds your mastered gear.
     if account_id and not inv_is_full:
@@ -141,6 +144,8 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     if inv is not None:
         owned_parts |= {n.strip().casefold()
                         for n in private_inventory.owned_parts(inv, items_data)}
+        _, pending_parts = private_inventory.pending_owned(inv, items_data)
+        owned_parts |= {n.strip().casefold() for n in pending_parts}
     if have_parts:
         owned_parts |= inventory.load_item_list(have_parts)
 
@@ -151,6 +156,7 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         items_data=items_data,
         mission_rewards=data.load_raw(force_refresh=refresh),
         refinement=refinement,
+        transient_rewards=data.load_transient_raw(force_refresh=refresh),
     )
 
     if not result.missing_equipment:
@@ -171,15 +177,14 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                 click.echo(f"     - {part}{tail}")
 
     if result.prime:
-        click.echo(f"\nPrime — {len(result.prime)} part(s), {refinement} relics "
+        click.echo(f"\nPrime — crack {len(result.prime)} relic(s) for "
+                   f"{result.prime_part_count} part(s), {refinement} "
                    "(farm the relic's TIER, then crack it at a void fissure):\n")
-        for pp in result.prime:
-            click.echo(f"  {pp.part}{_effort(pp.runs, pp.minutes)}")
-            if pp.best_relic:
-                click.echo(f"      best: {pp.best_relic}  "
-                           f"(farm ~{pp.relic_farm_runs} + crack ~{pp.crack_runs} runs)")
-            else:
-                click.echo(f"      relics: {', '.join(pp.relics)}")
+        for pr in result.prime:
+            cracks = f"  (~{pr.cracks} cracks)" if pr.cracks is not None else ""
+            click.echo(f"  {pr.relic}{_effort(pr.runs, pr.minutes)}{cracks}")
+            for part in pr.parts:
+                click.echo(f"     - {part}")
         click.echo("\n  Relic tiers to farm:")
         for t in result.tiers:
             click.echo(f"    {t.tier}: {t.where}")
@@ -195,6 +200,14 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         for item in result.vaulted_equipment:
             click.echo(f"  - {item}")
 
+    if result.event_source:
+        n = sum(len(p) for p in result.event_source.values())
+        click.echo(f"\nAlso available from events / alerts ({n} item(s)):")
+        for src, its in result.event_source.items():
+            click.echo(f"  {src}:")
+            for item in its:
+                click.echo(f"     - {item}")
+
     if result.special_source:
         n = sum(len(p) for p in result.special_source.values())
         click.echo(f"\nOther sources — non-standard nodes "
@@ -207,7 +220,7 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
 
     if result.no_part_source:
         n = sum(len(p) for p in result.no_part_source.values())
-        click.echo(f"\nBuy from Market — blueprints with no mission drop "
+        click.echo(f"\nNo drop source in database (Market / Duviri / Nightwave / …) "
                    f"({n} part(s)):")
         for equip, parts in result.no_part_source.items():
             click.echo(f"  {equip}:")

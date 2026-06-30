@@ -66,6 +66,10 @@ def route(req: RouteRequest) -> dict:
         types = private_inventory.collect_item_types(inv)
         have |= _norm(sync.resolve_names(types, items_data))
         owned_parts |= _norm(private_inventory.owned_parts(inv, items_data))
+        # Items building in the foundry are committed — treat as owned.
+        pending_equip, pending_parts = private_inventory.pending_owned(inv, items_data)
+        have |= pending_equip
+        owned_parts |= _norm(pending_parts)
     if req.account_id and not inv_is_full:
         try:
             have |= _norm(sync.fetch_owned(req.account_id))
@@ -90,6 +94,7 @@ def route(req: RouteRequest) -> dict:
         items_data=items_data,
         mission_rewards=data.load_raw(force_refresh=req.refresh),
         refinement=req.refinement,
+        transient_rewards=data.load_transient_raw(force_refresh=req.refresh),
     )
     return result.to_dict()
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 
 from . import acquisition, effort, inventory, items, optimize
+from .data import Node
 
 # Best community spots to farm each relic tier (you farm a tier, not a relic).
 RELIC_TIER_GUIDE = {
@@ -33,19 +34,25 @@ class Mission:
     runs: float | None = None
     minutes: float | None = None
     part_runs: dict[str, float | None] = field(default_factory=dict)
+    rotation: str | None = None   # "A"/"B"/"C" for endless nodes, else None
 
 
 @dataclass
-class PrimePart:
-    part: str
-    relics: list[str]
-    tiers: list[str]
-    # Cheapest relic to crack for this part + its expected effort (solo).
-    best_relic: str | None = None
-    runs: float | None = None          # total: relic farming + cracking
+class PrimeRelic:
+    """One relic to crack in the joint Prime plan, with the needed parts it yields.
+
+    Cracking a relic is a single mutually-exclusive draw over its table, so a
+    relic that contains several needed parts is farmed/cracked *once* for all of
+    them — not once per part. ``cracks`` is the expected number of cracks (and
+    relics consumed); ``runs`` adds the relic-farming runs; ``minutes`` is the
+    total time.
+    """
+    relic: str
+    tier: str
+    parts: list[str]
+    cracks: float | None = None
+    runs: float | None = None
     minutes: float | None = None
-    relic_farm_runs: float | None = None
-    crack_runs: float | None = None
 
 
 @dataclass
@@ -59,7 +66,8 @@ class RouteResult:
     missing_equipment: int
     non_prime: list[Mission] = field(default_factory=list)
     non_prime_uncovered: list[str] = field(default_factory=list)
-    prime: list[PrimePart] = field(default_factory=list)
+    prime: list[PrimeRelic] = field(default_factory=list)
+    prime_part_count: int = 0               # distinct Prime parts still needed
     tiers: list[TierGuide] = field(default_factory=list)
     vaulted_equipment: list[str] = field(default_factory=list)
     vaulted_part_count: int = 0
@@ -74,6 +82,9 @@ class RouteResult:
     # Expected-effort summary. refinement = relic refinement assumed for Primes.
     refinement: str = "Intact"
     total_minutes: float | None = None      # non-Prime missions + Prime parts
+    # Needed relics or parts that also drop from transient/event objectives,
+    # grouped by objective name: "Arbitrations (Rot B)" → ["Axi N3 Relic", ...]
+    event_source: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -92,31 +103,81 @@ def _mins(x: float | None) -> float | None:
     return round(x, 1)
 
 
-def _best_prime_relic(plan, pnorm: str, relics_display: list[str],
-                      refinement: str) -> dict:
-    """Pick the relic that minimizes expected total runs for a Prime part.
+def _prime_relic_plan(plan, prime_needed: set[str], refinement: str):
+    """Joint Prime plan: which relics to crack to get all needed Prime parts.
 
-    For each candidate relic we need the part's in-relic chance at the chosen
-    refinement (falling back to Intact, then any) and the relic's best
-    acquisition node. Relics not currently farmable (no live source) are skipped.
+    Cracking a relic is one mutually-exclusive draw over its table — the same
+    shape as a non-Prime node — so we reuse :func:`optimize.optimize_by_cost`,
+    treating each in-rotation relic as a node whose items are the needed parts it
+    contains. A relic yielding several needed parts is then farmed/cracked once
+    for all of them (no per-part double-counting). Cost is expected **time**:
+    ``cracks * ((1/r)*farm_mode_minutes + fissure_minutes)``.
+
+    Returns ``(relic_nodes_route, dchance, per_crack_time)`` helpers so the
+    caller can read effort per chosen relic.
     """
-    best = {"relic": None, "total_runs": float("inf"), "minutes": float("inf"),
-            "relic_farm_runs": float("inf"), "crack_runs": float("inf")}
-    for rdisp in relics_display:
-        rnorm = items.normalize(rdisp)
-        refines = plan.part_relic_refine_chance.get(pnorm, {}).get(rnorm, {})
-        d = refines.get(refinement) or refines.get("Intact") or (
-            next(iter(refines.values()), 0.0))
-        src = plan.relic_source.get(rnorm)
-        if not d or not src:
+    def dchance(pnorm: str, rnorm: str) -> float:
+        refs = plan.part_relic_refine_chance.get(pnorm, {}).get(rnorm, {})
+        return refs.get(refinement) or refs.get("Intact") or next(
+            iter(refs.values()), 0.0)
+
+    relic_disp: dict[str, str] = {}
+    relic_items: dict[str, set[str]] = {}
+    for pnorm, relics in plan.prime_part_relics.items():
+        if pnorm not in prime_needed:
             continue
-        r_chance, r_mode = src
-        e = effort.prime_part_runs(d, r_chance)
-        minutes = (e["relic_farm_runs"] * effort.mode_minutes(r_mode)
-                   + e["crack_runs"] * effort.FISSURE_MINUTES)
-        if e["total_runs"] < best["total_runs"]:
-            best = {"relic": rdisp, "minutes": minutes, **e}
-    return best
+        for rdisp in relics:
+            rnorm = items.normalize(rdisp)
+            if rnorm in plan.relic_source:
+                relic_disp[rnorm] = rdisp
+                relic_items.setdefault(rnorm, set()).add(pnorm)
+
+    relic_nodes = [
+        Node(planet="Void", name=relic_disp[rn], game_mode="Fissure",
+             items=frozenset(parts))
+        for rn, parts in relic_items.items()
+    ]
+
+    def per_crack_time(rnorm: str) -> float:
+        r_chance, r_mode, r_rot = plan.relic_source[rnorm]
+        if r_chance <= 0:
+            return float("inf")
+        rot_factor = effort.rotation_factor(r_rot)
+        return (100.0 / r_chance) * effort.mode_minutes(r_mode) * rot_factor + effort.FISSURE_MINUTES
+
+    def relic_cost(node, parts) -> float:
+        rnorm = items.normalize(node.name)
+        cracks = effort.mission_runs([dchance(p, rnorm) for p in parts])
+        if cracks == float("inf"):
+            return float("inf")
+        return cracks * per_crack_time(rnorm)
+
+    route = optimize.optimize_by_cost(relic_nodes, prime_needed, relic_cost)
+    return route, dchance, per_crack_time
+
+
+def _build_transient_map(transient_rewards: list) -> dict[str, set[str]]:
+    """Build norm_item → {objective descriptions} from transientRewards data."""
+    result: dict[str, set[str]] = {}
+    for obj in transient_rewards:
+        if not isinstance(obj, dict):
+            continue
+        name = obj.get("objectiveName", "")
+        for r in obj.get("rewards", []):
+            if not isinstance(r, dict):
+                continue
+            item = r.get("itemName", "")
+            if not item:
+                continue
+            rot = r.get("rotation", "")
+            obj_desc = f"{name} (Rot {rot})" if rot else name
+            norm = items.normalize(item)
+            result.setdefault(norm, set()).add(obj_desc)
+            # Also index relic by its base name (strips refinement suffix).
+            if "Relic" in item:
+                base_norm = items.normalize(items.base_relic_name(item))
+                result.setdefault(base_norm, set()).add(obj_desc)
+    return result
 
 
 def plan_route(
@@ -127,6 +188,7 @@ def plan_route(
     items_data: list[dict],
     mission_rewards: dict,
     refinement: str = "Intact",
+    transient_rewards: list | None = None,
 ) -> RouteResult:
     """Assemble a full route plan from normalized ownership/target sets.
 
@@ -161,7 +223,8 @@ def plan_route(
             runs = effort.mission_runs([chances.get(p, 0.0) for p in parts])
             if runs == float("inf"):
                 return float("inf")
-            return runs * effort.mode_minutes(node.game_mode)
+            rot = plan.node_rotation.get(node.key)
+            return runs * effort.mode_minutes(node.game_mode) * effort.rotation_factor(rot)
 
         route = optimize.optimize_by_cost(plan.direct_nodes, plan.direct_parts,
                                           node_cost)
@@ -170,7 +233,8 @@ def plan_route(
             chances = plan.node_part_chance.get(step.node.key, {})
             covered = sorted(step.covers, key=disp)
             runs = effort.mission_runs([chances.get(p, 0.0) for p in covered])
-            minutes = (runs * effort.mode_minutes(step.node.game_mode)
+            rot = plan.node_rotation.get(step.node.key)
+            minutes = (runs * effort.mode_minutes(step.node.game_mode) * effort.rotation_factor(rot)
                        if runs != float("inf") else float("inf"))
             missions.append(Mission(
                 node=step.node.key, game_mode=step.node.game_mode,
@@ -178,27 +242,38 @@ def plan_route(
                 runs=_runs(runs), minutes=_mins(minutes),
                 part_runs={disp(p): _runs(effort.part_runs(chances.get(p, 0.0)))
                            for p in covered},
+                rotation=rot,
             ))
         # Show the heaviest missions first so the time sink is obvious.
         missions.sort(key=lambda m: (m.minutes is None, -(m.minutes or 0)))
         result.non_prime = missions
         result.non_prime_uncovered = sorted(disp(p) for p in route.uncovered)
 
-    # Prime: per-part relics + the tiers they belong to.
+    # Prime: one joint plan over relics (a relic that drops several needed parts
+    # is cracked once for all of them — see _prime_relic_plan).
+    prime_needed = set(plan.prime_part_relics)
+    result.prime_part_count = len(prime_needed)
     tiers_needed: set[str] = set()
-    for pnorm in sorted(plan.prime_part_relics, key=disp):
-        relics = sorted(plan.prime_part_relics[pnorm])
-        part_tiers = sorted({items.relic_tier(r) for r in relics})
-        tiers_needed.update(part_tiers)
-        best = _best_prime_relic(plan, pnorm, relics, refinement)
-        result.prime.append(PrimePart(
-            part=disp(pnorm), relics=relics, tiers=part_tiers,
-            best_relic=best["relic"],
-            runs=_runs(best["total_runs"]),
-            minutes=_mins(best["minutes"]),
-            relic_farm_runs=_runs(best["relic_farm_runs"]),
-            crack_runs=_runs(best["crack_runs"]),
-        ))
+    if prime_needed:
+        route, dchance, per_crack_time = _prime_relic_plan(
+            plan, prime_needed, refinement)
+        relics_out: list[PrimeRelic] = []
+        for step in route.steps:
+            rnorm = items.normalize(step.node.name)
+            cracks = effort.mission_runs(
+                [dchance(p, rnorm) for p in step.covers])
+            r_chance, _, _ = plan.relic_source[rnorm]
+            minutes = cracks * per_crack_time(rnorm)
+            runs = cracks * (100.0 / r_chance + 1.0)  # relic-farm runs + cracks
+            tier = items.relic_tier(step.node.name)
+            tiers_needed.add(tier)
+            relics_out.append(PrimeRelic(
+                relic=step.node.name, tier=tier,
+                parts=sorted(disp(p) for p in step.covers),
+                cracks=_runs(cracks), runs=_runs(runs), minutes=_mins(minutes)))
+        # Fastest (cheapest) relics first; unobtainable last.
+        relics_out.sort(key=lambda r: (r.minutes is None, r.minutes or 0))
+        result.prime = relics_out
 
     result.tiers = [
         TierGuide(tier=t, where=RELIC_TIER_GUIDE.get(t, GENERIC_TIER_HINT))
@@ -237,6 +312,30 @@ def plan_route(
     total = sum(m.minutes for m in result.non_prime if m.minutes is not None)
     total += sum(p.minutes for p in result.prime if p.minutes is not None)
     result.total_minutes = round(total, 1) if total else None
+
+    # Cross-reference needed relics and parts against transient/event rewards so
+    # the user knows which currently-running events yield things they need.
+    if transient_rewards:
+        from collections import defaultdict as _dd2
+        tmap = _build_transient_map(transient_rewards)
+        ev: dict[str, list[str]] = _dd2(list)
+        # Prime relics being farmed.
+        for pr in result.prime:
+            rnorm = items.normalize(pr.relic)
+            for obj in tmap.get(rnorm, ()):
+                ev[obj].append(pr.relic)
+        # Non-prime parts.
+        for m in result.non_prime:
+            for part in m.parts:
+                for obj in tmap.get(items.normalize(part), ()):
+                    ev[obj].append(part)
+        # Special-source parts.
+        for parts in result.special_source.values():
+            for part in parts:
+                for obj in tmap.get(items.normalize(part), ()):
+                    ev[obj].append(part)
+        result.event_source = {obj: sorted(set(ps)) for obj, ps in sorted(ev.items())}
+
     return result
 
 
@@ -257,8 +356,8 @@ def _build_image_map(
     relevant: set[str] = set()
     for m in result.non_prime:
         relevant.update(m.parts)
-    for pp in result.prime:
-        relevant.add(pp.part)
+    for pr in result.prime:
+        relevant.update(pr.parts)
     relevant.update(result.vaulted_equipment)
     relevant.update(result.no_mission_source)
     for parts in result.no_part_source.values():

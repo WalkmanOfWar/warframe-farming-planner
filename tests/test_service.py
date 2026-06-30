@@ -25,11 +25,13 @@ ITEMS = [
             {"name": "Blueprint",
              "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/VoltPrimeBlueprint",
              "imageName": "schematic.png",
-             "drops": [{"type": "Volt Prime Blueprint", "location": "Axi N3 Relic"}]},
+             "drops": [{"type": "Volt Prime Blueprint", "chance": 25.33,
+                        "location": "Axi N3 Relic"}]},
             {"name": "Chassis",
              "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/VoltPrimeChassis",
              "imageName": "voltprimechassis.png",
-             "drops": [{"type": "Volt Prime Chassis", "location": "Neo V1 Relic"}]},
+             "drops": [{"type": "Volt Prime Chassis", "chance": 11.0,
+                        "location": "Neo V1 Relic"}]},
         ],
     },
     {
@@ -75,9 +77,11 @@ ITEMS = [
 MISSION_REWARDS = {
     "missionRewards": {
         "Earth": {"Mantle": {"gameMode": "Excavation",
-                             "rewards": {"A": [{"itemName": "Axi N3 Relic"}]}}},
+                             "rewards": {"A": [{"itemName": "Axi N3 Relic",
+                                                "chance": 10.0}]}}},
         "Mercury": {"Apollodorus": {"gameMode": "Survival",
-                                    "rewards": [{"itemName": "Neo V1 Relic"}]}},
+                                    "rewards": [{"itemName": "Neo V1 Relic",
+                                                 "chance": 10.0}]}},
     }
 }
 
@@ -105,15 +109,41 @@ def test_missing_equipment_count():
     assert _plan().missing_equipment == 4
 
 
-def test_prime_parts_and_tiers():
+def test_prime_relic_plan_and_tiers():
     res = _plan()
-    parts = {p.part: p for p in res.prime}
-    assert parts["Volt Prime Blueprint"].relics == ["Axi N3 Relic"]
-    assert parts["Volt Prime Blueprint"].tiers == ["Axi"]
-    assert parts["Volt Prime Chassis"].tiers == ["Neo"]
+    assert res.prime_part_count == 2          # Volt Prime BP + Chassis
+    by_relic = {pr.relic: pr for pr in res.prime}
+    assert by_relic["Axi N3 Relic"].parts == ["Volt Prime Blueprint"]
+    assert by_relic["Axi N3 Relic"].tier == "Axi"
+    assert by_relic["Neo V1 Relic"].parts == ["Volt Prime Chassis"]
+    assert all(pr.minutes and pr.cracks for pr in res.prime)
     # Tier guide is emitted for exactly the tiers needed, sorted.
     assert [t.tier for t in res.tiers] == ["Axi", "Neo"]
     assert all(t.where for t in res.tiers)
+
+
+def test_prime_shared_relic_cracked_once_for_multiple_parts():
+    # A frame whose two parts both drop from ONE relic must appear as a single
+    # relic entry covering both — not two separate per-part entries.
+    shared = [{
+        "name": "Duo Prime", "masterable": True, "vaulted": True,
+        "components": [
+            {"name": "Blueprint", "uniqueName": "/x/Recipes/DuoBP",
+             "drops": [{"type": "Duo Prime Blueprint", "chance": 20.0,
+                        "location": "Axi D1 Relic"}]},
+            {"name": "Chassis", "uniqueName": "/x/Recipes/DuoChassis",
+             "drops": [{"type": "Duo Prime Chassis", "chance": 20.0,
+                        "location": "Axi D1 Relic"}]},
+        ],
+    }]
+    mr = {"missionRewards": {"Lua": {"Apollo": {
+        "gameMode": "Disruption",
+        "rewards": {"C": [{"itemName": "Axi D1 Relic", "chance": 10.0}]}}}}}
+    res = service.plan_route(owned=set(), want={"duo prime"}, owned_parts=set(),
+                             items_data=shared, mission_rewards=mr)
+    assert len(res.prime) == 1                 # one relic, not two
+    assert res.prime[0].relic == "Axi D1 Relic"
+    assert res.prime[0].parts == ["Duo Prime Blueprint", "Duo Prime Chassis"]
 
 
 def test_nonprime_routed_to_boss_node():
@@ -172,7 +202,8 @@ def test_owned_parts_subtracted_across_buckets():
         "baruuk neuroptics blueprint",   # remove the special-source part
         "rhino blueprint",               # remove the Market BP
     })
-    assert all(p.part != "Volt Prime Blueprint" for p in res.prime)
+    # Volt Prime Blueprint owned -> its relic no longer cracked for it.
+    assert all("Volt Prime Blueprint" not in pr.parts for pr in res.prime)
     assert res.non_prime == []                       # only part was owned
     assert res.special_source == {}
     assert res.no_part_source == {}                  # Rhino BP was owned
