@@ -253,15 +253,20 @@ export default function App() {
   const [nonce, setNonce] = useState(() => localStorage.getItem('wf_nonce') || '')
   const [wishlist, setWishlist] = useState('')
   const [refinement, setRefinement] = useState(() => localStorage.getItem('wf_refinement') || 'Intact')
+  const [squadRadiant, setSquadRadiant] = useState(() => localStorage.getItem('wf_squad_radiant') === 'true')
 
   useEffect(() => { localStorage.setItem('wf_account_id', accountId) }, [accountId])
   useEffect(() => { localStorage.setItem('wf_nonce', nonce) }, [nonce])
   useEffect(() => { localStorage.setItem('wf_refinement', refinement) }, [refinement])
+  useEffect(() => { localStorage.setItem('wf_squad_radiant', squadRadiant) }, [squadRadiant])
+
   const [inventory, setInventory] = useState(null)
   const [invName, setInvName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('wf_last_result') || 'null') } catch { return null }
+  })
   const fileRef = useRef(null)
 
   async function onInventory(e) {
@@ -294,6 +299,7 @@ export default function App() {
         nonce: nonce.trim() || null,
         wishlist: wishlist.trim() ? lines(wishlist) : null,
         refinement,
+        squad_radiant: squadRadiant,
         inventory,
       }
       const res = await fetch(API, {
@@ -303,7 +309,9 @@ export default function App() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'Request failed')
-      setResult(data)
+      const stamped = { ...data, _savedAt: new Date().toISOString() }
+      setResult(stamped)
+      try { localStorage.setItem('wf_last_result', JSON.stringify(stamped)) } catch {}
     } catch (e) {
       setError(e.message)
     } finally {
@@ -400,6 +408,20 @@ export default function App() {
               {['Intact', 'Exceptional', 'Flawless', 'Radiant'].map(o =>
                 <option key={o} value={o}>{o}</option>)}
             </select>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 10, marginTop: 10,
+              cursor: 'pointer', fontSize: 14, color: C.text,
+            }}>
+              <input type="checkbox" checked={squadRadiant}
+                onChange={e => setSquadRadiant(e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: C.gold, cursor: 'pointer' }} />
+              <span>
+                4× squad radiant cracking
+                <span style={{ marginLeft: 6, fontSize: 12, color: C.muted }}>
+                  — all 4 players crack the same relic, share results
+                </span>
+              </span>
+            </label>
           </Field>
 
           <Btn onClick={plan} disabled={loading} fullWidth>
@@ -420,7 +442,28 @@ export default function App() {
           )}
         </Card>
 
-        {result && <Results r={result} />}
+        {result && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: C.muted, flex: 1 }}>
+                {result._savedAt
+                  ? `Stored result from ${new Date(result._savedAt).toLocaleString()}`
+                  : 'Route result'}
+              </span>
+              <button onClick={() => {
+                setResult(null)
+                try { localStorage.removeItem('wf_last_result') } catch {}
+              }} style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 4,
+                color: C.muted, fontSize: 12, padding: '2px 6px',
+              }}>
+                <X size={12} /> Clear
+              </button>
+            </div>
+            <Results r={result} />
+          </>
+        )}
 
         <footer style={{ textAlign: 'center', fontSize: 12, color: C.muted, marginTop: 32 }}>
           Unofficial fan tool · Data from{' '}
@@ -494,6 +537,15 @@ function ItemIcon({ url, name, size = 28 }) {
 function Results({ r }) {
   const img = r.images || {}
   const [sort, setSort] = useState('fast')
+  const [search, setSearch] = useState('')
+  const sq = search.trim().toLowerCase()
+
+  // Filter helpers — a mission or item matches if name or any sub-item matches.
+  const matchStr = (s) => !sq || (s || '').toLowerCase().includes(sq)
+  const matchMission = (m) =>
+    matchStr(m.node) || matchStr(m.game_mode) || m.parts.some(matchStr)
+  const matchRelic = (pr) =>
+    matchStr(pr.relic) || pr.parts.some(matchStr)
 
   if (!r.missing_equipment) {
     return (
@@ -511,10 +563,12 @@ function Results({ r }) {
   // Sort key: "fast" = quickest missions first; "efficiency" = most parts per
   // run first (best bang for the buck). Unknown-effort missions sink to the end.
   const effOf = (m) => (m.runs ? m.parts.length / m.runs : -1)
-  const sortedNonPrime = [...r.non_prime].sort((a, b) =>
+  const filteredNonPrime = r.non_prime.filter(matchMission)
+  const sortedNonPrime = [...filteredNonPrime].sort((a, b) =>
     sort === 'efficiency'
       ? effOf(b) - effOf(a)
       : (a.minutes ?? Infinity) - (b.minutes ?? Infinity))
+  const filteredPrime = r.prime.filter(matchRelic)
 
   return (
     <div>
@@ -524,6 +578,29 @@ function Results({ r }) {
         <StatCard icon={<MapPin size={16} color={C.gold} />}  n={nonPrimeParts}        label="non-prime" />
         <StatCard icon={<Gem size={16} color={C.gold} />}     n={r.prime_part_count}   label="prime" />
         <StatCard icon={<Lock size={16} color={C.gold} />}    n={r.vaulted_part_count} label="vaulted" />
+      </div>
+
+      {/* Search */}
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Filter missions, parts, relics…"
+          spellCheck={false}
+          style={{
+            width: '100%', background: C.surface, color: C.text,
+            border: `1px solid ${search ? C.accent : C.border}`,
+            borderRadius: 8, padding: '9px 36px 9px 12px', fontSize: 14,
+            outline: 'none', boxSizing: 'border-box', transition: 'border-color .15s',
+          }}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} style={{
+            position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex',
+          }}>
+            <X size={14} color={C.muted} />
+          </button>
+        )}
       </div>
 
       {/* Estimated total time */}
@@ -544,7 +621,7 @@ function Results({ r }) {
       )}
 
       {/* Non-prime */}
-      {r.non_prime.length > 0 && (
+      {r.non_prime.length > 0 && sortedNonPrime.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
@@ -552,7 +629,7 @@ function Results({ r }) {
           }}>
             <MapPin size={15} color={C.gold} />
             <span style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>
-              {`Non-Prime — ${r.non_prime.length} mission${r.non_prime.length !== 1 ? 's' : ''}`}
+              {`Non-Prime — ${sortedNonPrime.length}${sortedNonPrime.length < r.non_prime.length ? `/${r.non_prime.length}` : ''} mission${sortedNonPrime.length !== 1 ? 's' : ''}`}
             </span>
             <span style={{ flex: 1 }} />
             <SortToggle value={sort} onChange={setSort} options={[
@@ -564,7 +641,7 @@ function Results({ r }) {
             {sortedNonPrime.map((m, i) => (
               <div key={m.node}>
                 {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
-                <MissionRow index={i + 1} mission={m} images={img} />
+                <MissionRow index={i + 1} mission={m} images={img} search={sq} />
               </div>
             ))}
           </div>
@@ -572,14 +649,14 @@ function Results({ r }) {
       )}
 
       {/* Prime */}
-      {r.prime.length > 0 && (
+      {r.prime.length > 0 && filteredPrime.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <SectionHeader icon={<Gem size={15} color={C.gold} />}
-            title={`Prime — crack ${r.prime.length} relic${r.prime.length !== 1 ? 's' : ''} for ${r.prime_part_count} part${r.prime_part_count !== 1 ? 's' : ''}`}
-            sub="Farm each relic's tier, then crack it at a void fissure. A relic shared by several parts is cracked once for all of them." />
+            title={`Prime — crack ${filteredPrime.length}${filteredPrime.length < r.prime.length ? `/${r.prime.length}` : ''} relic${filteredPrime.length !== 1 ? 's' : ''} for ${r.prime_part_count} part${r.prime_part_count !== 1 ? 's' : ''}`}
+            sub={`Farm each relic's tier, then crack it at a void fissure. A relic shared by several parts is cracked once for all of them.${r.squad_radiant ? ' Time estimated for 4× squad Radiant sharing.' : ''}`} />
           <div style={{ padding: '0 20px 20px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {r.prime.map((pr, i) => (
+              {filteredPrime.map((pr, i) => (
                 <div key={pr.relic}>
                   {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
                   <div style={{ padding: '12px 0' }}>
@@ -728,12 +805,29 @@ function SectionHeader({ icon, title, sub }) {
   )
 }
 
-function MissionRow({ index, mission, images = {} }) {
+function Highlight({ text, query }) {
+  if (!query) return <>{text}</>
+  const idx = text.toLowerCase().indexOf(query)
+  if (idx < 0) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark style={{ background: 'rgba(212,179,90,0.35)', color: C.text, borderRadius: 2, padding: '0 1px' }}>
+        {text.slice(idx, idx + query.length)}
+      </mark>
+      {text.slice(idx + query.length)}
+    </>
+  )
+}
+
+function MissionRow({ index, mission, images = {}, search = '' }) {
   return (
     <div style={{ padding: '12px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, minWidth: 20, textAlign: 'right' }}>{index}.</span>
-        <span style={{ fontWeight: 700, color: C.text }}>{mission.node}</span>
+        <span style={{ fontWeight: 700, color: C.text }}>
+          <Highlight text={mission.node} query={search} />
+        </span>
         {mission.game_mode && mission.game_mode !== 'Unknown' && (
           <Badge color={C.accent} bg={C.accentFaint}>{mission.game_mode}</Badge>
         )}
@@ -747,7 +841,9 @@ function MissionRow({ index, mission, images = {} }) {
           return (
             <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <ItemIcon url={images[p]} name={p} size={24} />
-              <span style={{ fontSize: 13, color: C.muted }}>{p}</span>
+              <span style={{ fontSize: 13, color: C.muted }}>
+                <Highlight text={p} query={search} />
+              </span>
               {pr != null && (
                 <span style={{ fontSize: 11, color: C.muted, opacity: 0.7 }}>~{pr} runs</span>
               )}

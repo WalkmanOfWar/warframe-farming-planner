@@ -141,6 +141,19 @@ def _mission_runs_independent(ps: list[float]) -> float:
         t += 1
 
 
+def effective_squad_chance_pct(chance_pct: float, squad_size: int = 4) -> float:
+    """Effective per-run drop probability when ``squad_size`` players each crack
+    the same relic type and share results (pick any of the squad's drops).
+
+    Probability of at least one hit in ``squad_size`` independent cracks:
+    ``1 - (1 - p)^squad_size``, returned as a percentage.
+    """
+    p = _p(chance_pct)
+    if p <= 0:
+        return 0.0
+    return (1.0 - (1.0 - p) ** squad_size) * 100.0
+
+
 def prime_part_runs(in_relic_chance_pct: float, relic_node_chance_pct: float) -> dict:
     """Expected effort for one Prime part: relic farming + cracking (solo).
 

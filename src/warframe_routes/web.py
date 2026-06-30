@@ -36,6 +36,7 @@ class RouteRequest(BaseModel):
     inventory: dict | None = None  # uploaded inventory.json contents
     refresh: bool = False
     refinement: str = "Intact"     # relic refinement assumed for Prime effort
+    squad_radiant: bool = False    # model 4× shared Radiant cracking for Prime effort
 
 
 def _norm(names) -> set[str]:
@@ -101,6 +102,7 @@ def route(req: RouteRequest) -> dict:
         refinement=req.refinement,
         transient_rewards=data.load_transient_raw(force_refresh=req.refresh),
         syndicate_missions=syndicate_missions,
+        squad_radiant=req.squad_radiant,
     )
     return result.to_dict()
 
