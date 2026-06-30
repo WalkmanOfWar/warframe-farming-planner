@@ -45,15 +45,18 @@ def relic_tier(relic_display: str) -> str:
     return (relic_display or "").split(" ", 1)[0]
 
 
-# Direct (non-relic) component drops look like "Venus/Fossa (Assassination)" or
-# "Duviri/Endless: Tier 6 (Normal)": "<planet>/<node> (<mode>)".
+# Direct (non-relic) component drops look like "Venus/Fossa (Assassination)",
+# "Duviri/Endless: Tier 6 (Normal)" or, for endless nodes, with a trailing
+# rotation: "Eris/Oestrus (Infested Salvage), Rotation C".
 _LOCATION_RE = re.compile(r"^(?P<planet>[^/]+)/(?P<rest>.+)$")
 _MODE_RE = re.compile(r"^(?P<node>.+?)\s*\((?P<mode>[^)]*)\)\s*$")
+_ROTATION_RE = re.compile(r",\s*Rotation\s+(?P<rot>[A-C])\s*$", re.IGNORECASE)
 
 
-def parse_location(location: str) -> tuple[str, str, str] | None:
-    """Parse a mission drop location into (planet, node, game_mode).
+def parse_location(location: str) -> tuple[str, str, str, str | None] | None:
+    """Parse a mission drop location into (planet, node, game_mode, rotation).
 
+    ``rotation`` is "A"/"B"/"C" for endless nodes that name one, else None.
     Returns None for locations that are not mission nodes (e.g. relics, or
     sources like market/clan that have no "<planet>/<node>" shape).
     """
@@ -64,10 +67,15 @@ def parse_location(location: str) -> tuple[str, str, str] | None:
         return None
     planet = m.group("planet").strip()
     rest = m.group("rest").strip()
+    rotation = None
+    rm = _ROTATION_RE.search(rest)
+    if rm:
+        rotation = rm.group("rot").upper()
+        rest = rest[:rm.start()].strip()
     mm = _MODE_RE.match(rest)
     if mm:
-        return planet, mm.group("node").strip(), mm.group("mode").strip()
-    return planet, rest, "Unknown"
+        return planet, mm.group("node").strip(), mm.group("mode").strip(), rotation
+    return planet, rest, "Unknown", rotation
 
 
 def normalize(name: str) -> str:

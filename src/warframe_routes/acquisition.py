@@ -45,11 +45,13 @@ class AcquisitionPlan:
     # --- Drop chances for the expected-effort model (all chances are percent) ---
     node_part_chance: dict[str, dict[str, float]] = field(default_factory=dict)
     # node.key -> {norm part -> drop chance %} for non-Prime node drops
+    node_rotation: dict[str, str | None] = field(default_factory=dict)
+    # node.key -> rotation letter (A/B/C) or None for non-endless nodes
     part_relic_refine_chance: dict[str, dict[str, dict[str, float]]] = field(
         default_factory=dict)
     # norm part -> norm relic -> {refinement -> in-relic chance %}
-    relic_source: dict[str, tuple[float, str]] = field(default_factory=dict)
-    # norm relic -> (best acquisition chance %, game mode of that node)
+    relic_source: dict[str, tuple[float, str, str | None]] = field(default_factory=dict)
+    # norm relic -> (best acquisition chance %, game mode, rotation of that node)
 
     def vaulted_equipment(self) -> set[str]:
         """Equipment whose every part is currently not farmable (fully vaulted)."""
@@ -64,21 +66,23 @@ class AcquisitionPlan:
 
 
 def _relic_drops(rewards):
-    """Yield (norm relic, display, chance %) for every relic in a node's rewards."""
+    """Yield (norm relic, display, chance %, rotation) for every relic in a node's rewards."""
     if isinstance(rewards, dict):
-        lists = rewards.values()
+        for rot_key, lst in rewards.items():
+            if not isinstance(lst, list):
+                continue
+            rotation = rot_key.upper() if rot_key.upper() in ("A", "B", "C") else None
+            for r in lst:
+                name = r.get("itemName", "") if isinstance(r, dict) else ""
+                if "Relic" in name:
+                    base = base_relic_name(name)
+                    yield normalize(base), base, (r.get("chance") or 0.0), rotation
     elif isinstance(rewards, list):
-        lists = [rewards]
-    else:
-        return
-    for lst in lists:
-        if not isinstance(lst, list):
-            continue
-        for r in lst:
+        for r in rewards:
             name = r.get("itemName", "") if isinstance(r, dict) else ""
             if "Relic" in name:
                 base = base_relic_name(name)
-                yield normalize(base), base, (r.get("chance") or 0.0)
+                yield normalize(base), base, (r.get("chance") or 0.0), None
 
 
 def build_plan(
@@ -133,13 +137,19 @@ def build_plan(
                 else:
                     parsed = parse_location(loc)
                     if parsed:
-                        planet, node_name, mode = parsed
+                        planet, node_name, mode, rotation = parsed
+                        # Different rotations of one node are distinct reward
+                        # pools, so they stay distinct "nodes" (and cost more
+                        # time the deeper the rotation).
+                        disp_name = (f"{node_name} · Rot {rotation}"
+                                     if rotation else node_name)
+                        key = (planet, disp_name)
                         slot = direct_node_acc.setdefault(
-                            (planet, node_name), [planet, node_name, mode, set()])
-                        slot[3].add(pnorm)
+                            key, [planet, disp_name, mode, rotation, set()])
+                        slot[4].add(pnorm)
                         # Keep the best (highest) chance if a part lists the node twice.
-                        prev = node_part_chance_acc[(planet, node_name)].get(pnorm, 0.0)
-                        node_part_chance_acc[(planet, node_name)][pnorm] = max(prev, chance)
+                        prev = node_part_chance_acc[key].get(pnorm, 0.0)
+                        node_part_chance_acc[key][pnorm] = max(prev, chance)
                         register(pnorm, disp, equip_name)
                         routed_parts.add(pnorm)
                     elif loc.strip():
@@ -195,15 +205,16 @@ def build_plan(
             if not isinstance(node_data, dict):
                 continue
             mode = node_data.get("gameMode", "Unknown")
-            for rnorm, display, chance in _relic_drops(node_data.get("rewards", {})):
+            for rnorm, display, chance, rotation in _relic_drops(node_data.get("rewards", {})):
                 available[rnorm] = display
                 if chance <= 0:
-                    relic_source.setdefault(rnorm, (chance, mode))
+                    relic_source.setdefault(rnorm, (chance, mode, rotation))
                     continue
-                farm_time = (100.0 / chance) * effort.mode_minutes(mode)
+                rot_factor = effort.rotation_factor(rotation)
+                farm_time = (100.0 / chance) * effort.mode_minutes(mode) * rot_factor
                 if farm_time < relic_best_time.get(rnorm, float("inf")):
                     relic_best_time[rnorm] = farm_time
-                    relic_source[rnorm] = (chance, mode)
+                    relic_source[rnorm] = (chance, mode, rotation)
 
     # Prime parts: keep only relics currently in rotation; vaulted parts split off.
     prime_part_relics: dict[str, set[str]] = {}
@@ -215,10 +226,14 @@ def build_plan(
         else:
             not_farmable.add(pnorm)
 
-    direct_parts = {p for _, _, _, parts in direct_node_acc.values() for p in parts}
+    direct_parts = {p for _, _, _, _, parts in direct_node_acc.values() for p in parts}
+    node_rotation = {
+        f"{planet} - {disp_name}": rotation
+        for planet, disp_name, _, rotation, _ in direct_node_acc.values()
+    }
     direct_nodes = [
         Node(planet=p, name=n, game_mode=m, items=frozenset(parts))
-        for p, n, m, parts in direct_node_acc.values()
+        for p, n, m, _, parts in direct_node_acc.values()
     ]
     # Re-key node->part chances by Node.key ("planet - name") for the service.
     node_part_chance = {
@@ -247,6 +262,7 @@ def build_plan(
         orphan_parts=orphan_parts,
         special_source_parts=dict(special_source_parts),
         node_part_chance=node_part_chance,
+        node_rotation=node_rotation,
         part_relic_refine_chance=part_relic_refine_chance,
         relic_source=relic_source,
     )

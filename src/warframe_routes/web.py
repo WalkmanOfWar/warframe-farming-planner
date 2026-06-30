@@ -90,6 +90,7 @@ def route(req: RouteRequest) -> dict:
         items_data=items_data,
         mission_rewards=data.load_raw(force_refresh=req.refresh),
         refinement=req.refinement,
+        transient_rewards=data.load_transient_raw(force_refresh=req.refresh),
     )
     return result.to_dict()
 

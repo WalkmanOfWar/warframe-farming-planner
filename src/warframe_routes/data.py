@@ -15,10 +15,12 @@ from pathlib import Path
 import requests
 
 MISSION_REWARDS_URL = "https://drops.warframestat.us/data/missionRewards.json"
+TRANSIENT_REWARDS_URL = "https://drops.warframestat.us/data/transientRewards.json"
 
 # Where downloaded drop data is cached between runs.
 CACHE_DIR = Path.home() / ".cache" / "warframe-optimize-routes"
 CACHE_FILE = CACHE_DIR / "missionRewards.json"
+TRANSIENT_CACHE_FILE = CACHE_DIR / "transientRewards.json"
 
 # Re-download if the cache is older than this (seconds). One day by default.
 CACHE_TTL_SECONDS = 24 * 60 * 60
@@ -116,3 +118,18 @@ def _collect_items(rewards) -> set[str]:
 def load_nodes(force_refresh: bool = False) -> list[Node]:
     """Convenience: fetch (or read cache) and parse into Node objects."""
     return parse_nodes(load_raw(force_refresh=force_refresh))
+
+
+def load_transient_raw(force_refresh: bool = False) -> list:
+    """Return transientRewards.json (list of event/transient objectives), cached."""
+    if not force_refresh and TRANSIENT_CACHE_FILE.exists():
+        if (time.time() - TRANSIENT_CACHE_FILE.stat().st_mtime) < CACHE_TTL_SECONDS:
+            return json.loads(TRANSIENT_CACHE_FILE.read_text(encoding="utf-8"))
+
+    resp = requests.get(TRANSIENT_REWARDS_URL, timeout=30)
+    resp.raise_for_status()
+    raw = resp.json()
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    TRANSIENT_CACHE_FILE.write_text(json.dumps(raw), encoding="utf-8")
+    return raw

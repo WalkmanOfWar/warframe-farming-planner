@@ -34,6 +34,7 @@ class Mission:
     runs: float | None = None
     minutes: float | None = None
     part_runs: dict[str, float | None] = field(default_factory=dict)
+    rotation: str | None = None   # "A"/"B"/"C" for endless nodes, else None
 
 
 @dataclass
@@ -81,6 +82,9 @@ class RouteResult:
     # Expected-effort summary. refinement = relic refinement assumed for Primes.
     refinement: str = "Intact"
     total_minutes: float | None = None      # non-Prime missions + Prime parts
+    # Needed relics or parts that also drop from transient/event objectives,
+    # grouped by objective name: "Arbitrations (Rot B)" → ["Axi N3 Relic", ...]
+    event_source: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -135,10 +139,11 @@ def _prime_relic_plan(plan, prime_needed: set[str], refinement: str):
     ]
 
     def per_crack_time(rnorm: str) -> float:
-        r_chance, r_mode = plan.relic_source[rnorm]
+        r_chance, r_mode, r_rot = plan.relic_source[rnorm]
         if r_chance <= 0:
             return float("inf")
-        return (100.0 / r_chance) * effort.mode_minutes(r_mode) + effort.FISSURE_MINUTES
+        rot_factor = effort.rotation_factor(r_rot)
+        return (100.0 / r_chance) * effort.mode_minutes(r_mode) * rot_factor + effort.FISSURE_MINUTES
 
     def relic_cost(node, parts) -> float:
         rnorm = items.normalize(node.name)
@@ -151,6 +156,30 @@ def _prime_relic_plan(plan, prime_needed: set[str], refinement: str):
     return route, dchance, per_crack_time
 
 
+def _build_transient_map(transient_rewards: list) -> dict[str, set[str]]:
+    """Build norm_item → {objective descriptions} from transientRewards data."""
+    result: dict[str, set[str]] = {}
+    for obj in transient_rewards:
+        if not isinstance(obj, dict):
+            continue
+        name = obj.get("objectiveName", "")
+        for r in obj.get("rewards", []):
+            if not isinstance(r, dict):
+                continue
+            item = r.get("itemName", "")
+            if not item:
+                continue
+            rot = r.get("rotation", "")
+            obj_desc = f"{name} (Rot {rot})" if rot else name
+            norm = items.normalize(item)
+            result.setdefault(norm, set()).add(obj_desc)
+            # Also index relic by its base name (strips refinement suffix).
+            if "Relic" in item:
+                base_norm = items.normalize(items.base_relic_name(item))
+                result.setdefault(base_norm, set()).add(obj_desc)
+    return result
+
+
 def plan_route(
     *,
     owned: set[str],
@@ -159,6 +188,7 @@ def plan_route(
     items_data: list[dict],
     mission_rewards: dict,
     refinement: str = "Intact",
+    transient_rewards: list | None = None,
 ) -> RouteResult:
     """Assemble a full route plan from normalized ownership/target sets.
 
@@ -193,7 +223,8 @@ def plan_route(
             runs = effort.mission_runs([chances.get(p, 0.0) for p in parts])
             if runs == float("inf"):
                 return float("inf")
-            return runs * effort.mode_minutes(node.game_mode)
+            rot = plan.node_rotation.get(node.key)
+            return runs * effort.mode_minutes(node.game_mode) * effort.rotation_factor(rot)
 
         route = optimize.optimize_by_cost(plan.direct_nodes, plan.direct_parts,
                                           node_cost)
@@ -202,7 +233,8 @@ def plan_route(
             chances = plan.node_part_chance.get(step.node.key, {})
             covered = sorted(step.covers, key=disp)
             runs = effort.mission_runs([chances.get(p, 0.0) for p in covered])
-            minutes = (runs * effort.mode_minutes(step.node.game_mode)
+            rot = plan.node_rotation.get(step.node.key)
+            minutes = (runs * effort.mode_minutes(step.node.game_mode) * effort.rotation_factor(rot)
                        if runs != float("inf") else float("inf"))
             missions.append(Mission(
                 node=step.node.key, game_mode=step.node.game_mode,
@@ -210,6 +242,7 @@ def plan_route(
                 runs=_runs(runs), minutes=_mins(minutes),
                 part_runs={disp(p): _runs(effort.part_runs(chances.get(p, 0.0)))
                            for p in covered},
+                rotation=rot,
             ))
         # Show the heaviest missions first so the time sink is obvious.
         missions.sort(key=lambda m: (m.minutes is None, -(m.minutes or 0)))
@@ -229,7 +262,7 @@ def plan_route(
             rnorm = items.normalize(step.node.name)
             cracks = effort.mission_runs(
                 [dchance(p, rnorm) for p in step.covers])
-            r_chance, _ = plan.relic_source[rnorm]
+            r_chance, _, _ = plan.relic_source[rnorm]
             minutes = cracks * per_crack_time(rnorm)
             runs = cracks * (100.0 / r_chance + 1.0)  # relic-farm runs + cracks
             tier = items.relic_tier(step.node.name)
@@ -279,6 +312,30 @@ def plan_route(
     total = sum(m.minutes for m in result.non_prime if m.minutes is not None)
     total += sum(p.minutes for p in result.prime if p.minutes is not None)
     result.total_minutes = round(total, 1) if total else None
+
+    # Cross-reference needed relics and parts against transient/event rewards so
+    # the user knows which currently-running events yield things they need.
+    if transient_rewards:
+        from collections import defaultdict as _dd2
+        tmap = _build_transient_map(transient_rewards)
+        ev: dict[str, list[str]] = _dd2(list)
+        # Prime relics being farmed.
+        for pr in result.prime:
+            rnorm = items.normalize(pr.relic)
+            for obj in tmap.get(rnorm, ()):
+                ev[obj].append(pr.relic)
+        # Non-prime parts.
+        for m in result.non_prime:
+            for part in m.parts:
+                for obj in tmap.get(items.normalize(part), ()):
+                    ev[obj].append(part)
+        # Special-source parts.
+        for parts in result.special_source.values():
+            for part in parts:
+                for obj in tmap.get(items.normalize(part), ()):
+                    ev[obj].append(part)
+        result.event_source = {obj: sorted(set(ps)) for obj, ps in sorted(ev.items())}
+
     return result
 
 

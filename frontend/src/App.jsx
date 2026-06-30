@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react'
 import {
   AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock,
   Crosshair, Gem, Loader2, Lock, MapPin, ShoppingBag,
-  Swords, Upload, X,
+  Swords, Upload, X, Zap,
 } from 'lucide-react'
 
 const API = '/api/route'
@@ -27,6 +27,9 @@ const C = {
   success:     '#3fb950',
   successFaint:'rgba(63,185,80,0.08)',
   successBorder:'rgba(63,185,80,0.3)',
+  event:       '#e8a020',
+  eventFaint:  'rgba(232,160,32,0.10)',
+  eventBorder: 'rgba(232,160,32,0.30)',
   lith:        '#2d5c35',
   meso:        '#3a3a7a',
   neo:         '#5a3a7a',
@@ -201,6 +204,22 @@ function TierBadge({ tier }) {
       fontSize: 12, fontWeight: 700,
     }}>
       {tier}
+    </span>
+  )
+}
+
+const ROT_COLOR = { A: '#3a7a4a', B: '#3a5a7a', C: '#7a3a5a' }
+
+function RotationBadge({ rotation }) {
+  if (!rotation) return null
+  return (
+    <span style={{
+      display: 'inline-block', textAlign: 'center',
+      background: ROT_COLOR[rotation] || C.surface2, color: '#fff',
+      borderRadius: 6, padding: '2px 8px',
+      fontSize: 11, fontWeight: 700,
+    }}>
+      Rot {rotation}
     </span>
   )
 }
@@ -623,6 +642,28 @@ function Results({ r }) {
           ))}
         </CollapsibleCard>
       )}
+
+      {Object.keys(r.event_source || {}).length > 0 && (
+        <CollapsibleCard
+          icon={<Zap size={15} color={C.event} />}
+          title="Also available from current events / alerts"
+          count={Object.values(r.event_source).reduce((s, a) => s + a.length, 0)}
+          accentColor={C.event}>
+          <p style={{ margin: '0 0 14px', fontSize: 13, color: C.muted }}>
+            These needed items also drop from transient / rotating objectives active right now.
+            Grinding them gives you progress on multiple goals simultaneously.
+          </p>
+          {Object.entries(r.event_source).map(([src, its]) => (
+            <div key={src} style={{ marginBottom: 14 }}>
+              <div style={{
+                fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+                color: C.event, textTransform: 'uppercase', marginBottom: 8,
+              }}>{src}</div>
+              <ItemGrid items={its} images={img} />
+            </div>
+          ))}
+        </CollapsibleCard>
+      )}
     </div>
   )
 }
@@ -661,6 +702,7 @@ function MissionRow({ index, mission, images = {} }) {
         {mission.game_mode && mission.game_mode !== 'Unknown' && (
           <Badge color={C.accent} bg={C.accentFaint}>{mission.game_mode}</Badge>
         )}
+        {mission.rotation && <RotationBadge rotation={mission.rotation} />}
         <span style={{ flex: 1 }} />
         <EffortTag runs={mission.runs} minutes={mission.minutes} />
       </div>
@@ -682,9 +724,10 @@ function MissionRow({ index, mission, images = {} }) {
   )
 }
 
-function CollapsibleCard({ icon, title, count, children }) {
+function CollapsibleCard({ icon, title, count, children, accentColor }) {
   const [open, setOpen] = useState(false)
   const [hov, setHov] = useState(false)
+  const countColor = accentColor || C.muted
   return (
     <Card style={{ marginBottom: 12, overflow: 'hidden' }}>
       <button
@@ -702,7 +745,7 @@ function CollapsibleCard({ icon, title, count, children }) {
         <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{title}</span>
         <span style={{
           fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
-          background: C.surface2, color: C.muted, border: `1px solid ${C.border}`,
+          background: C.surface2, color: countColor, border: `1px solid ${C.border}`,
         }}>{count}</span>
         <ChevronDown size={16} color={C.muted}
           style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s', flexShrink: 0 }} />

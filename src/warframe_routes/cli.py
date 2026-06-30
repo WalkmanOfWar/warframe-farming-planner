@@ -151,6 +151,7 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         items_data=items_data,
         mission_rewards=data.load_raw(force_refresh=refresh),
         refinement=refinement,
+        transient_rewards=data.load_transient_raw(force_refresh=refresh),
     )
 
     if not result.missing_equipment:
@@ -193,6 +194,14 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                    f"{len(result.vaulted_equipment)} fully-vaulted item(s)):")
         for item in result.vaulted_equipment:
             click.echo(f"  - {item}")
+
+    if result.event_source:
+        n = sum(len(p) for p in result.event_source.values())
+        click.echo(f"\nAlso available from events / alerts ({n} item(s)):")
+        for src, its in result.event_source.items():
+            click.echo(f"  {src}:")
+            for item in its:
+                click.echo(f"     - {item}")
 
     if result.special_source:
         n = sum(len(p) for p in result.special_source.values())
