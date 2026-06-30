@@ -84,6 +84,7 @@ class RouteResult:
     item_types: dict[str, str] = field(default_factory=dict)
     # Expected-effort summary. refinement = relic refinement assumed for Primes.
     refinement: str = "Intact"
+    squad_radiant: bool = False             # whether 4× squad cracking was modelled
     total_minutes: float | None = None      # non-Prime missions + Prime parts
     # Needed relics or parts that also drop from transient/event objectives,
     # grouped by objective name: "Arbitrations (Rot B)" → ["Axi N3 Relic", ...]
@@ -106,7 +107,8 @@ def _mins(x: float | None) -> float | None:
     return round(x, 1)
 
 
-def _prime_relic_plan(plan, prime_needed: set[str], refinement: str):
+def _prime_relic_plan(plan, prime_needed: set[str], refinement: str,
+                      squad_size: int = 1):
     """Joint Prime plan: which relics to crack to get all needed Prime parts.
 
     Cracking a relic is one mutually-exclusive draw over its table — the same
@@ -116,13 +118,19 @@ def _prime_relic_plan(plan, prime_needed: set[str], refinement: str):
     for all of them (no per-part double-counting). Cost is expected **time**:
     ``cracks * ((1/r)*farm_mode_minutes + fissure_minutes)``.
 
+    With ``squad_size > 1``, chances are boosted to the effective per-run
+    probability of a squad sharing results (see :func:`effort.effective_squad_chance_pct`).
+
     Returns ``(relic_nodes_route, dchance, per_crack_time)`` helpers so the
     caller can read effort per chosen relic.
     """
     def dchance(pnorm: str, rnorm: str) -> float:
         refs = plan.part_relic_refine_chance.get(pnorm, {}).get(rnorm, {})
-        return refs.get(refinement) or refs.get("Intact") or next(
+        raw = refs.get(refinement) or refs.get("Intact") or next(
             iter(refs.values()), 0.0)
+        if squad_size > 1:
+            return effort.effective_squad_chance_pct(raw, squad_size)
+        return raw
 
     relic_disp: dict[str, str] = {}
     relic_items: dict[str, set[str]] = {}
@@ -193,16 +201,22 @@ def plan_route(
     refinement: str = "Intact",
     transient_rewards: list | None = None,
     syndicate_missions: list | None = None,
+    squad_radiant: bool = False,
 ) -> RouteResult:
     """Assemble a full route plan from normalized ownership/target sets.
 
     ``refinement`` is the relic refinement assumed when estimating Prime-part
     effort (Intact/Exceptional/Flawless/Radiant); it does not change which
     missions are selected, only the expected-runs/time figures.
+
+    ``squad_radiant`` models cracking in a squad of 4 sharing results: each
+    fissure run yields 4 independent Radiant cracks, dramatically reducing
+    expected runs for rare parts.
     """
     needed_equipment = inventory.compute_needed(want, owned)
     result = RouteResult(missing_equipment=len(needed_equipment),
-                         refinement=refinement)
+                         refinement=refinement,
+                         squad_radiant=squad_radiant)
     if not needed_equipment:
         return result
 
@@ -262,8 +276,9 @@ def plan_route(
     result.prime_part_count = len(prime_needed)
     tiers_needed: set[str] = set()
     if prime_needed:
+        squad_size = 4 if squad_radiant else 1
         route, dchance, per_crack_time = _prime_relic_plan(
-            plan, prime_needed, refinement)
+            plan, prime_needed, refinement, squad_size=squad_size)
         relics_out: list[PrimeRelic] = []
         for step in route.steps:
             rnorm = items.normalize(step.node.name)
@@ -300,16 +315,46 @@ def plan_route(
     for pnorm, part_name in plan.orphan_parts.items():
         equip = plan.part_equipment.get(pnorm, part_name)
         part_map[equip].append(part_name)
+
+    # Detect Duviri Circuit items: orphan parts whose parent equipment has a
+    # Duviri-specific resource component (Pathos Clamp, Rune Marrow, etc.).
+    # These aren't in the WFCD drop table but are obtainable via the Circuit.
+    duviri_equip: set[str] = set()
+    item_idx = {it.get("name", ""): it for it in items_data if it.get("name")}
+    for equip_name in list(part_map.keys()):
+        it = item_idx.get(equip_name)
+        if not it:
+            continue
+        for comp in it.get("components") or []:
+            if "/Gameplay/Duviri/" in (comp.get("uniqueName") or ""):
+                duviri_equip.add(equip_name)
+                break
+    # Move Duviri equipment parts out of no_part_source → special_source.
+    duviri_label = "Duviri Circuit (weekly rotation — check in-game)"
+    for equip_name in duviri_equip:
+        for pname in part_map.pop(equip_name, []):
+            plan.special_source_parts.setdefault(
+                items.normalize(pname), set()
+            ).add(duviri_label)
     result.no_part_source = {
         eq: sorted(parts) for eq, parts in sorted(part_map.items())
     }
 
-    # Group special-source parts by location string, sorted.
+    # Group special-source parts by location string. Normalise raw location
+    # strings from the items dataset into cleaner human-readable labels.
+    def _source_label(loc: str) -> str:
+        loc = loc.strip()
+        if loc.startswith("Kahl's Garrison"):
+            return "Kahl's Garrison (weekly)"
+        if "WF1999 Bounty" in loc or "llvania" in loc:
+            return "1999 Calendar Bounties (Höllvania)"
+        return loc
+
     src_map: dict[str, list[str]] = _dd(list)
     for pnorm, locs in plan.special_source_parts.items():
         part_name = disp(pnorm)
         for loc in locs:
-            src_map[loc].append(part_name)
+            src_map[_source_label(loc)].append(part_name)
     result.special_source = {src: sorted(set(parts)) for src, parts in sorted(src_map.items())}
 
     # Type index: normalized name → WFCD type string, for UI grouping.
