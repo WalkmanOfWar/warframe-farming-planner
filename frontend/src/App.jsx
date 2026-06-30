@@ -39,6 +39,16 @@ const C = {
 
 const TIER_COLOR = { Lith: C.lith, Meso: C.meso, Neo: C.neo, Axi: C.axi, Requiem: C.requiem }
 
+function useWindowWidth() {
+  const [w, setW] = useState(typeof window !== 'undefined' ? window.innerWidth : 800)
+  useEffect(() => {
+    const handler = () => setW(window.innerWidth)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return w
+}
+
 function lines(text) {
   return text.split('\n').map((s) => s.trim()).filter(Boolean)
 }
@@ -325,6 +335,8 @@ function exportText(r) {
 /* ── Main App ─────────────────────────────────────────────── */
 
 export default function App() {
+  const w = useWindowWidth()
+  const isMobile = w < 520
   const [accountId, setAccountId] = useState(() => localStorage.getItem('wf_account_id') || '')
   const [nonce, setNonce] = useState(() => localStorage.getItem('wf_nonce') || '')
   const [wishlist, setWishlist] = useState('')
@@ -399,7 +411,7 @@ export default function App() {
 
   return (
     <div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-      <div style={{ maxWidth: 680, margin: '0 auto', padding: '48px 20px 80px' }}>
+      <div style={{ maxWidth: 680, margin: '0 auto', padding: isMobile ? '24px 12px 60px' : '48px 20px 80px' }}>
 
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
@@ -652,8 +664,13 @@ function ItemIcon({ url, name, size = 28 }) {
 function Results({ r }) {
   const img = r.images || {}
   const [sort, setSort] = useState('fast')
+  const [groupByPlanet, setGroupByPlanet] = useState(false)
   const [search, setSearch] = useState('')
+  const [showAllMissions, setShowAllMissions] = useState(false)
+  const [showAllRelics, setShowAllRelics] = useState(false)
   const sq = search.trim().toLowerCase()
+  const w = useWindowWidth()
+  const isMobile = w < 520
 
   // Filter helpers — a mission or item matches if name or any sub-item matches.
   const matchStr = (s) => !sq || (s || '').toLowerCase().includes(sq)
@@ -683,12 +700,17 @@ function Results({ r }) {
     sort === 'efficiency'
       ? effOf(b) - effOf(a)
       : (a.minutes ?? Infinity) - (b.minutes ?? Infinity))
+  const TOP_N = 10
+  const visibleMissions = showAllMissions || sq ? sortedNonPrime : sortedNonPrime.slice(0, TOP_N)
+
   const filteredPrime = r.prime.filter(matchRelic)
+  const visibleRelics = showAllRelics || sq ? filteredPrime : filteredPrime.slice(0, TOP_N)
+  const totalCracks = filteredPrime.reduce((s, pr) => s + (pr.cracks || 0), 0)
 
   return (
     <div>
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
         <StatCard icon={<Swords size={16} color={C.gold} />}  n={r.missing_equipment} label="missing" />
         <StatCard icon={<MapPin size={16} color={C.gold} />}  n={nonPrimeParts}        label="non-prime" />
         <StatCard icon={<Gem size={16} color={C.gold} />}     n={r.prime_part_count}   label="prime" />
@@ -747,18 +769,77 @@ function Results({ r }) {
               {`Non-Prime — ${sortedNonPrime.length}${sortedNonPrime.length < r.non_prime.length ? `/${r.non_prime.length}` : ''} mission${sortedNonPrime.length !== 1 ? 's' : ''}`}
             </span>
             <span style={{ flex: 1 }} />
-            <SortToggle value={sort} onChange={setSort} options={[
+            {!isMobile && <SortToggle value={sort} onChange={setSort} options={[
               { id: 'fast', label: 'Fastest first' },
               { id: 'efficiency', label: 'Most parts / run' },
-            ]} />
+            ]} />}
           </div>
+          {isMobile && (
+            <div style={{ padding: '10px 20px 0', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <SortToggle value={sort} onChange={setSort} options={[
+                { id: 'fast', label: 'Fastest' },
+                { id: 'efficiency', label: 'Efficient' },
+              ]} />
+              <button onClick={() => setGroupByPlanet(g => !g)} style={{
+                border: `1px solid ${groupByPlanet ? C.accentBorder : C.border}`,
+                background: groupByPlanet ? C.accentFaint : 'transparent',
+                color: groupByPlanet ? C.accent : C.muted,
+                borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>By planet</button>
+            </div>
+          )}
+          {!isMobile && (
+            <div style={{ padding: '8px 20px 0', display: 'flex', gap: 8 }}>
+              <button onClick={() => setGroupByPlanet(g => !g)} style={{
+                border: `1px solid ${groupByPlanet ? C.accentBorder : C.border}`,
+                background: groupByPlanet ? C.accentFaint : 'transparent',
+                color: groupByPlanet ? C.accent : C.muted,
+                borderRadius: 8, padding: '4px 10px', fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>Group by planet</button>
+            </div>
+          )}
           <div style={{ padding: '0 20px 20px' }}>
-            {sortedNonPrime.map((m, i) => (
-              <div key={m.node}>
-                {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
-                <MissionRow index={i + 1} mission={m} images={img} search={sq} />
-              </div>
-            ))}
+            {groupByPlanet
+              ? (() => {
+                  const byPlanet = {}
+                  visibleMissions.forEach(m => {
+                    const planet = m.node.split(' - ')[0] || 'Unknown'
+                    ;(byPlanet[planet] = byPlanet[planet] || []).push(m)
+                  })
+                  return Object.entries(byPlanet).sort(([a], [b]) => a.localeCompare(b)).map(([planet, missions]) => (
+                    <div key={planet}>
+                      <div style={{
+                        fontSize: 11, fontWeight: 700, letterSpacing: '0.08em',
+                        textTransform: 'uppercase', color: C.accent, margin: '16px 0 6px',
+                        borderBottom: `1px solid ${C.accentBorder}`, paddingBottom: 4,
+                      }}>{planet}</div>
+                      {missions.map((m, i) => (
+                        <div key={m.node}>
+                          {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
+                          <MissionRow index={i + 1} mission={m} images={img} search={sq} />
+                        </div>
+                      ))}
+                    </div>
+                  ))
+                })()
+              : visibleMissions.map((m, i) => (
+                  <div key={m.node}>
+                    {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
+                    <MissionRow index={i + 1} mission={m} images={img} search={sq} />
+                  </div>
+                ))
+            }
+            {!showAllMissions && !sq && sortedNonPrime.length > TOP_N && (
+              <button onClick={() => setShowAllMissions(true)} style={{
+                display: 'block', width: '100%', marginTop: 12, padding: '8px 0',
+                background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8,
+                color: C.muted, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                Show all {sortedNonPrime.length} missions (hiding {sortedNonPrime.length - TOP_N} more)
+              </button>
+            )}
           </div>
         </Card>
       )}
@@ -782,20 +863,24 @@ function Results({ r }) {
         <Card style={{ marginBottom: 16 }}>
           <SectionHeader icon={<Gem size={15} color={C.gold} />}
             title={`Prime — crack ${filteredPrime.length}${filteredPrime.length < r.prime.length ? `/${r.prime.length}` : ''} relic${filteredPrime.length !== 1 ? 's' : ''} for ${r.prime_part_count} part${r.prime_part_count !== 1 ? 's' : ''}`}
-            sub={`Farm each relic's tier, then crack it at a void fissure. A relic shared by several parts is cracked once for all of them.${r.squad_radiant ? ' Time estimated for 4× squad Radiant sharing.' : ''}`} />
+            sub={`Farm each relic's tier, crack at a void fissure. Shared-part relics are cracked once.${totalCracks > 0 ? ` Total fissure runs: ~${Math.round(totalCracks)}.` : ''}${r.squad_radiant ? ' 4× squad Radiant model.' : ''}`} />
           <div style={{ padding: '0 20px 20px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {filteredPrime.map((pr, i) => {
+              {visibleRelics.map((pr, i) => {
+                const farmLabel = pr.farm_node
+                  ? `${pr.farm_node.split(' / ').pop()} (${pr.farm_node.split(' / ')[0]}) · ${pr.farm_mode}${pr.farm_chance ? ` · ${pr.farm_chance}%` : ''}`
+                  : null
                 const relicTooltip = pr.cracks != null
                   ? <><div style={{ fontWeight: 700, color: C.text, marginBottom: 6 }}>Effort breakdown:</div>
                       <div style={{ color: C.muted, marginBottom: 2 }}>~{pr.cracks} cracks to get all parts</div>
-                      <div style={{ color: C.muted }}>~{pr.runs} total runs (farm + crack)</div></>
+                      <div style={{ color: C.muted, marginBottom: farmLabel ? 8 : 0 }}>~{pr.runs} total runs (farm + crack)</div>
+                      {farmLabel && <div style={{ color: C.accent, fontSize: 11 }}>Best farm: {farmLabel}</div>}</>
                   : null
                 return (
                 <div key={pr.relic}>
                   {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
                   <div style={{ padding: '12px 0' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                       <TierBadge tier={pr.tier} />
                       <span style={{ fontWeight: 700, color: C.text }}>{pr.relic}</span>
                       {pr.cracks != null && (
@@ -804,6 +889,11 @@ function Results({ r }) {
                       <span style={{ flex: 1 }} />
                       <EffortTag runs={pr.runs} minutes={pr.minutes} tooltip={relicTooltip} />
                     </div>
+                    {farmLabel && (
+                      <div style={{ fontSize: 11, color: C.muted, paddingLeft: 4, marginBottom: 8, opacity: 0.8 }}>
+                        Farm at: <span style={{ color: C.accent }}>{farmLabel}</span>
+                      </div>
+                    )}
                     <div style={{ paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {pr.parts.map(p => (
                         <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -815,7 +905,15 @@ function Results({ r }) {
                   </div>
                 </div>
               )})}
-
+              {!showAllRelics && !sq && filteredPrime.length > TOP_N && (
+                <button onClick={() => setShowAllRelics(true)} style={{
+                  display: 'block', width: '100%', marginTop: 8, padding: '8px 0',
+                  background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8,
+                  color: C.muted, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                  Show all {filteredPrime.length} relics (hiding {filteredPrime.length - TOP_N} more)
+                </button>
+              )}
             </div>
 
             {r.tiers.length > 0 && (() => {

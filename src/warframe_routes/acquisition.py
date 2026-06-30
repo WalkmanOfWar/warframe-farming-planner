@@ -50,8 +50,8 @@ class AcquisitionPlan:
     part_relic_refine_chance: dict[str, dict[str, dict[str, float]]] = field(
         default_factory=dict)
     # norm part -> norm relic -> {refinement -> in-relic chance %}
-    relic_source: dict[str, tuple[float, str, str | None]] = field(default_factory=dict)
-    # norm relic -> (best acquisition chance %, game mode, rotation of that node)
+    relic_source: dict[str, tuple[float, str, str | None, str | None]] = field(default_factory=dict)
+    # norm relic -> (best acquisition chance %, game mode, rotation, node display name)
 
     def vaulted_equipment(self) -> set[str]:
         """Equipment whose every part is currently not farmable (fully vaulted)."""
@@ -211,26 +211,27 @@ def build_plan(
     # expected time per relic = (1/chance) * mode_minutes — not merely the highest
     # drop chance. A quick Capture at 6% beats a slow Survival-rot-C at 10%.
     available: dict[str, str] = {}
-    relic_source: dict[str, tuple[float, str]] = {}
+    relic_source: dict[str, tuple[float, str, str | None, str | None]] = {}
     relic_best_time: dict[str, float] = {}
     root = mission_rewards_raw.get("missionRewards", mission_rewards_raw)
-    for planet_nodes in root.values() if isinstance(root, dict) else []:
+    for planet, planet_nodes in (root.items() if isinstance(root, dict) else []):
         if not isinstance(planet_nodes, dict):
             continue
-        for node_data in planet_nodes.values():
+        for node_key, node_data in planet_nodes.items():
             if not isinstance(node_data, dict):
                 continue
             mode = node_data.get("gameMode", "Unknown")
+            node_label = f"{planet} / {node_key}"
             for rnorm, display, chance, rotation in _relic_drops(node_data.get("rewards", {})):
                 available[rnorm] = display
                 if chance <= 0:
-                    relic_source.setdefault(rnorm, (chance, mode, rotation))
+                    relic_source.setdefault(rnorm, (chance, mode, rotation, node_label))
                     continue
                 rot_factor = effort.rotation_factor(rotation)
                 farm_time = (100.0 / chance) * effort.mode_minutes(mode) * rot_factor
                 if farm_time < relic_best_time.get(rnorm, float("inf")):
                     relic_best_time[rnorm] = farm_time
-                    relic_source[rnorm] = (chance, mode, rotation)
+                    relic_source[rnorm] = (chance, mode, rotation, node_label)
 
     # Prime parts: keep only relics currently in rotation; vaulted parts split off.
     prime_part_relics: dict[str, set[str]] = {}
