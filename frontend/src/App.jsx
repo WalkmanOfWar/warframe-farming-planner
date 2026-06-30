@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock,
   Crosshair, Gem, Loader2, Lock, MapPin, ShoppingBag,
@@ -210,6 +210,28 @@ function TierBadge({ tier }) {
 
 const ROT_COLOR = { A: '#3a7a4a', B: '#3a5a7a', C: '#7a3a5a' }
 
+// Preferred display order for WFCD item type strings in grouped sections.
+const TYPE_ORDER = [
+  'Warframe', 'Rifle', 'Pistol', 'Dual Pistols', 'Shotgun', 'Sniper',
+  'Bow', 'Launcher', 'Throwing', 'Melee',
+  'Arch-Gun', 'Arch-Melee', 'Archwing',
+  'Pets', 'Companion Weapon', 'Sentinel',
+]
+
+function groupByType(keys, typeMap) {
+  const groups = {}
+  for (const key of keys) {
+    const t = typeMap[key] || 'Other'
+    ;(groups[t] = groups[t] || []).push(key)
+  }
+  // Sort within each group alphabetically.
+  for (const k of Object.keys(groups)) groups[k].sort()
+  // Return sorted by TYPE_ORDER, then unknown types alphabetically at end.
+  const known = TYPE_ORDER.filter(t => groups[t])
+  const unknown = Object.keys(groups).filter(t => !TYPE_ORDER.includes(t)).sort()
+  return [...known, ...unknown].map(t => [t, groups[t]])
+}
+
 function RotationBadge({ rotation }) {
   if (!rotation) return null
   return (
@@ -227,10 +249,14 @@ function RotationBadge({ rotation }) {
 /* ── Main App ─────────────────────────────────────────────── */
 
 export default function App() {
-  const [accountId, setAccountId] = useState('')
-  const [nonce, setNonce] = useState('')
+  const [accountId, setAccountId] = useState(() => localStorage.getItem('wf_account_id') || '')
+  const [nonce, setNonce] = useState(() => localStorage.getItem('wf_nonce') || '')
   const [wishlist, setWishlist] = useState('')
-  const [refinement, setRefinement] = useState('Intact')
+  const [refinement, setRefinement] = useState(() => localStorage.getItem('wf_refinement') || 'Intact')
+
+  useEffect(() => { localStorage.setItem('wf_account_id', accountId) }, [accountId])
+  useEffect(() => { localStorage.setItem('wf_nonce', nonce) }, [nonce])
+  useEffect(() => { localStorage.setItem('wf_refinement', refinement) }, [refinement])
   const [inventory, setInventory] = useState(null)
   const [invName, setInvName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -606,7 +632,12 @@ function Results({ r }) {
       {r.no_mission_source.length > 0 && (
         <CollapsibleCard icon={<ShoppingBag size={15} color={C.muted} />}
           title="Market / clan / syndicate / lich / Baro / quest" count={r.no_mission_source.length}>
-          <ItemGrid items={r.no_mission_source} images={img} />
+          {groupByType(r.no_mission_source, r.item_types || {}).map(([type, items]) => (
+            <div key={type} style={{ marginBottom: 16 }}>
+              <TypeLabel label={type} />
+              <ItemGrid items={items} images={img} />
+            </div>
+          ))}
         </CollapsibleCard>
       )}
 
@@ -614,13 +645,17 @@ function Results({ r }) {
         <CollapsibleCard icon={<ShoppingBag size={15} color={C.gold} />}
           title="No drop source in database (Market / Duviri / Nightwave / etc.)"
           count={Object.values(r.no_part_source).reduce((s, a) => s + a.length, 0)}>
-          {Object.entries(r.no_part_source).map(([equip, parts]) => (
-            <div key={equip} style={{ marginBottom: 16 }}>
-              <div style={{
-                fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
-                color: C.gold, textTransform: 'uppercase', marginBottom: 8,
-              }}>{equip}</div>
-              <ItemGrid items={parts} images={img} />
+          {groupByType(Object.keys(r.no_part_source), r.item_types || {}).map(([type, equips]) => (
+            <div key={type} style={{ marginBottom: 20 }}>
+              <TypeLabel label={type} />
+              {equips.map(equip => (
+                <div key={equip} style={{ marginBottom: 12, paddingLeft: 4 }}>
+                  <div style={{
+                    fontSize: 12, fontWeight: 600, color: C.gold, marginBottom: 6,
+                  }}>{equip}</div>
+                  <ItemGrid items={r.no_part_source[equip]} images={img} />
+                </div>
+              ))}
             </div>
           ))}
         </CollapsibleCard>
@@ -756,6 +791,19 @@ function CollapsibleCard({ icon, title, count, children, accentColor }) {
         </div>
       )}
     </Card>
+  )
+}
+
+function TypeLabel({ label }) {
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+      textTransform: 'uppercase', color: C.muted,
+      borderBottom: `1px solid ${C.border}`,
+      paddingBottom: 4, marginBottom: 10,
+    }}>
+      {label}
+    </div>
   )
 }
 

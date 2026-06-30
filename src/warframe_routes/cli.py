@@ -5,7 +5,7 @@ from __future__ import annotations
 import click
 
 from . import (catalog, data, inventory, items, private_inventory, service,
-               sync)
+               sync, worldstate)
 
 
 def _hours(minutes: float) -> str:
@@ -149,6 +149,11 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     if have_parts:
         owned_parts |= inventory.load_item_list(have_parts)
 
+    try:
+        syndicate_missions = worldstate.load_syndicate_missions(force_refresh=refresh)
+    except Exception:
+        syndicate_missions = None  # worldstate unavailable — proceed without filtering
+
     result = service.plan_route(
         owned=have,
         want=want,
@@ -157,6 +162,7 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         mission_rewards=data.load_raw(force_refresh=refresh),
         refinement=refinement,
         transient_rewards=data.load_transient_raw(force_refresh=refresh),
+        syndicate_missions=syndicate_missions,
     )
 
     if not result.missing_equipment:

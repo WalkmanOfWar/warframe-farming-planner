@@ -89,6 +89,7 @@ def build_plan(
     items: list[dict],
     mission_rewards_raw: dict,
     needed_equipment: set[str],
+    active_bounty: set[str] | None = None,
 ) -> AcquisitionPlan:
     """Construct the acquisition plan for a set of missing equipment (normalized)."""
     index = {normalize(it.get("name", "")): it for it in items if it.get("name")}
@@ -138,6 +139,21 @@ def build_plan(
                     parsed = parse_location(loc)
                     if parsed:
                         planet, node_name, mode, rotation = parsed
+                        # When live worldstate is available and the mode is a bounty
+                        # type, only include the drop if the item is in the current
+                        # active pool. Event bounties (Ghoul Purge, Plague Star, …)
+                        # are absent from the worldstate when the event is not running.
+                        is_bounty = "Bounty" in mode
+                        if (is_bounty and active_bounty is not None
+                                and pnorm not in active_bounty):
+                            # Item not in any current bounty pool → event-only source.
+                            # Redirect to special_source so it appears in the UI with
+                            # a note rather than silently disappearing.
+                            label = f"{node_name} (event bounty — not currently active)"
+                            special_source_parts[pnorm].add(label)
+                            register(pnorm, disp, equip_name)
+                            routed_parts.add(pnorm)
+                            continue
                         # Different rotations of one node are distinct reward
                         # pools, so they stay distinct "nodes" (and cost more
                         # time the deeper the rotation).
