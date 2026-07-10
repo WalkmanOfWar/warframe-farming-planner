@@ -35,6 +35,9 @@ class Mission:
     minutes: float | None = None
     part_runs: dict[str, float | None] = field(default_factory=dict)
     rotation: str | None = None   # "A"/"B"/"C" for endless nodes, else None
+    # This node is currently an open void fissure of this tier — running it as
+    # a fissure farms the part AND cracks a relic in the same mission.
+    live_fissure: str | None = None
 
 
 @dataclass
@@ -63,6 +66,11 @@ class PrimeRelic:
     # the plan-wide choice is often wrong per relic). None = chosen one is best.
     best_refinement: str | None = None
     best_refinement_minutes: float | None = None
+    # Live-fissure context: tier_live = a fissure of this relic's tier is open
+    # right now (cracking is actionable); farm_node_live = the relic's best farm
+    # node is itself an open fissure of the same tier — farm & crack together.
+    tier_live: bool = False
+    farm_node_live: bool = False
 
 
 @dataclass
@@ -378,14 +386,31 @@ def plan_route(
 
     # Live fissures for the tiers this plan needs — "crack an Axi" is only
     # actionable when an Axi fissure is actually open right now.
-    if fissures and tiers_needed:
+    if fissures:
+        live = worldstate.active_fissures(fissures)
         by_tier: dict[str, list[dict]] = {}
-        for f in worldstate.active_fissures(fissures):
+        for f in live:
             if f["tier"] in tiers_needed:
                 by_tier.setdefault(f["tier"], []).append(f)
         for lst in by_tier.values():  # normal missions first, storms/SP last
             lst.sort(key=lambda f: (f["storm"], f["hard"], f["node"]))
         result.active_fissures = dict(sorted(by_tier.items()))
+
+        # Double-dip: a route node that is an open fissure right now farms the
+        # part AND cracks a relic in one mission. Match plan nodes ("Sedna -
+        # Adaro · Rot B") against fissure nodes ("Adaro (Sedna)").
+        node_tiers = worldstate.fissure_node_tiers(live)
+        for m in result.non_prime:
+            planet, _, name = m.node.partition(" - ")
+            name = name.split(" · ")[0]
+            m.live_fissure = node_tiers.get(f"{planet}|{name}".casefold())
+        live_tiers = {f["tier"] for f in live if not f["storm"]}
+        for pr in result.prime:
+            pr.tier_live = pr.tier in live_tiers
+            if pr.farm_node:  # "Void / Hepit" — is the farm node a live fissure
+                p, _, n = pr.farm_node.partition(" / ")
+                pr.farm_node_live = (
+                    node_tiers.get(f"{p.strip()}|{n.strip()}".casefold()) == pr.tier)
 
     # Everything the player still needs, normalized — for Baro/invasion matching.
     needed_norms = set(plan.part_display) | set(needed_equipment)

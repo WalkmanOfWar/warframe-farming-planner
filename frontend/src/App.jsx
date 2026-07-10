@@ -836,6 +836,34 @@ function Results({ r }) {
         </div>
       )}
 
+      {/* Do right now — actions that are both cheapest and live at this moment */}
+      {!sq && (() => {
+        const now = []
+        const ownedLive = r.prime.filter(p => p.owned > 0 && p.tier_live)
+        if (ownedLive.length) now.push(
+          `Crack relics you already own (${ownedLive.map(p => `${p.relic} ×${p.owned}`).join(', ')}) — zero farming, their fissure tier is open now`)
+        r.prime.filter(p => p.farm_node_live).forEach(p => now.push(
+          `${(p.farm_node || '').split(' / ').pop()} is a LIVE ${p.tier} fissure — farm ${p.relic} while cracking one per run`))
+        r.non_prime.filter(m => m.live_fissure).forEach(m => now.push(
+          `Run ${m.node} as a ${m.live_fissure} fissure — farm ${m.parts.length > 1 ? 'its parts' : m.parts[0]} and crack a relic in the same mission`))
+        if (!now.length) return null
+        return (
+          <Card accent style={{ marginBottom: 16, padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <Zap size={15} color={C.gold} />
+              <span style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>Do right now</span>
+              <span style={{ fontSize: 12, color: C.muted }}>— best value while these fissures are open</span>
+            </div>
+            {now.slice(0, 5).map((t, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 13, color: C.text }}>
+                <span style={{ color: C.gold, fontWeight: 700 }}>{i + 1}.</span>
+                <span>{t}</span>
+              </div>
+            ))}
+          </Card>
+        )
+      })()}
+
       {/* Non-prime */}
       {r.non_prime.length > 0 && sortedNonPrime.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
@@ -988,6 +1016,16 @@ function Results({ r }) {
                     {farmLabel && (
                       <div style={{ fontSize: 11, color: C.muted, paddingLeft: 4, marginBottom: 8, opacity: 0.8 }}>
                         Farm at: <span style={{ color: C.accent }}>{farmLabel}</span>
+                        {pr.farm_node_live && (
+                          <span style={{ color: C.success, fontWeight: 700, marginLeft: 8 }}>
+                            ⚡ LIVE {pr.tier} fissure — farm &amp; crack together!
+                          </span>
+                        )}
+                        {!pr.farm_node_live && pr.tier_live && (
+                          <span style={{ color: C.success, marginLeft: 8 }}>
+                            · {pr.tier} fissure open now
+                          </span>
+                        )}
                       </div>
                     )}
                     <div style={{ paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1245,6 +1283,16 @@ function MissionRow({ index, mission, images = {}, search = '' }) {
           <Badge color={C.accent} bg={C.accentFaint}>{mission.game_mode}</Badge>
         )}
         {mission.rotation && <RotationBadge rotation={mission.rotation} />}
+        {mission.live_fissure && (
+          <span title="This node is an open void fissure right now — run it as a fissure with a relic equipped to farm the part AND crack a relic in one mission."
+            style={{
+              fontSize: 11, fontWeight: 700, color: C.success,
+              background: C.successFaint, border: `1px solid ${C.successBorder}`,
+              borderRadius: 6, padding: '1px 7px', cursor: 'help',
+            }}>
+            ⚡ LIVE {mission.live_fissure} fissure
+          </span>
+        )}
         <span style={{ flex: 1 }} />
         <EffortTag runs={mission.runs} minutes={mission.minutes} tooltip={tooltip} />
       </div>

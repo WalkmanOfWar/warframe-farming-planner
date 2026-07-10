@@ -188,7 +188,9 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
             # "Unknown" is a sentinel for a missing (mode) in the drop location;
             # don't print a meaningless tag (matches the web UI).
             mode = f"  [{m.game_mode}]" if m.game_mode and m.game_mode != "Unknown" else ""
-            click.echo(f"{i}. {m.node}{mode}{_effort(m.runs, m.minutes)}")
+            dip = (f"  ** LIVE {m.live_fissure} fissure — bring a relic! **"
+                   if m.live_fissure else "")
+            click.echo(f"{i}. {m.node}{mode}{_effort(m.runs, m.minutes)}{dip}")
             for part in m.parts:
                 pr = m.part_runs.get(part)
                 tail = f"  (~{pr} runs)" if pr is not None else ""
@@ -203,7 +205,9 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
             owned = f"  [own {pr.owned}]" if pr.owned else ""
             hint = (f"  → crack as {pr.best_refinement} (~{_hours(pr.best_refinement_minutes)})"
                     if pr.best_refinement else "")
-            click.echo(f"  {pr.relic}{_effort(pr.runs, pr.minutes)}{cracks}{owned}{hint}")
+            live = ("  ** farm node is a LIVE fissure — farm & crack together! **"
+                    if pr.farm_node_live else ("  [tier live now]" if pr.tier_live else ""))
+            click.echo(f"  {pr.relic}{_effort(pr.runs, pr.minutes)}{cracks}{owned}{hint}{live}")
             for part in pr.parts:
                 click.echo(f"     - {part}")
         click.echo("\n  Relic tiers to farm:")
