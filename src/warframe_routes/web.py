@@ -153,6 +153,8 @@ def route(req: RouteRequest) -> dict:
         fissures=_ws("fissures"),
         void_trader=_ws("voidTrader"),
         invasions=_ws("invasions"),
+        vault_trader=_ws("vaultTrader"),
+        daily_deals=_ws("dailyDeals"),
     )
     return result.to_dict()
 

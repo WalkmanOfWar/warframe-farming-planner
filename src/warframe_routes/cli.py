@@ -175,6 +175,8 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         fissures=_ws("fissures"),
         void_trader=_ws("voidTrader"),
         invasions=_ws("invasions"),
+        vault_trader=_ws("vaultTrader"),
+        daily_deals=_ws("dailyDeals"),
     )
 
     if not result.missing_equipment:
@@ -222,6 +224,19 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                    f"(at {result.baro['location']}, until {result.baro['until']}):")
         for item in result.baro["items"]:
             click.echo(f"  - {item}")
+
+    if result.vault_trader:
+        click.echo(f"\nVarzia (Prime Resurgence) is selling "
+                   f"{len(result.vault_trader['items'])} fully-vaulted item(s) you need "
+                   f"(at {result.vault_trader['location']}, until "
+                   f"{result.vault_trader['until']}) — the only non-trade way to get them:")
+        for item in result.vault_trader["items"]:
+            click.echo(f"  - {item}")
+
+    if result.daily_deal:
+        d = result.daily_deal
+        click.echo(f"\nDarvo's daily deal has {d['item']} you need "
+                   f"({d['discount']}% off, until {d['expiry']}).")
 
     if result.total_minutes:
         click.echo(f"\nEstimated total time: ~{_hours(result.total_minutes)} "

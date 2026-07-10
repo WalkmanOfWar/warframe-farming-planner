@@ -192,15 +192,26 @@ Both the **Prime relic chain and the non-Prime direct chain are built**
    `worldstate.py` filters event-only bounty drops against live
    `syndicateMissions` (15-min cache, graceful fallback when offline). Duviri
    Circuit gear is detected via `/Gameplay/Duviri/` component uniqueNames.
-   Nightwave cred-shop items are *not* labelled — `/pc/nightwave` exposes
-   challenges/reputation only, never the rotating shop stock; there is no data
-   source, live or static, short of hand-maintaining a JSON that goes stale
-   every ~3-month season (rejected — not worth the upkeep for one section).
-   Sortie/Archon Hunt were also evaluated and rejected: `/pc/sortie` and
+   Several other live sections are cross-referenced against needed items, all
+   in `service.plan_route`: `fissures` (which relic tiers are actionable
+   *right now*, plus double-dip detection when a route node is itself an open
+   fissure — `Mission.live_fissure`/`PrimeRelic.tier_live`/`farm_node_live`),
+   `voidTrader` (Baro Ki'Teer stock), `invasions` (matching rewards),
+   `vaultTrader` (Varzia/Prime Resurgence — the *only* non-trade way to buy
+   fully-vaulted equipment, matched against `vaulted_equipment`; store item
+   names are inconsistent, e.g. `"Prime Corinth"` for `"Corinth Prime"`, so
+   `worldstate.vault_trader_stock` indexes both word orders), and
+   `dailyDeals` (Darvo's single rotating item). Nightwave cred-shop items are
+   *not* labelled — `/pc/nightwave` exposes challenges/reputation only, never
+   the rotating shop stock; there is no data source, live or static, short of
+   hand-maintaining a JSON that goes stale every ~3-month season (rejected —
+   not worth the upkeep for one section). Sortie/Archon Hunt were also
+   evaluated and rejected: `/pc/sortie` and
    `/pc/archonHunt` both report `rewardPool: "Sortie Rewards"` (a label, not
    an item list), and even with real data these modes award Forma/Riven/
    Legendary Core/Archon Shards — not equipment parts, so they wouldn't fit
-   this tool's "missing gear" model regardless.
+   this tool's "missing gear" model regardless. `flashSales` was checked too:
+   all 24 live entries are cosmetic bundles/supporter packs, no equipment.
 
 The modular pipeline is structured so each can be added without disturbing the
 others; `optimize.py` stays objective-agnostic.

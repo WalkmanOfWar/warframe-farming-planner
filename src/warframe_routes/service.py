@@ -118,6 +118,13 @@ class RouteResult:
     active_fissures: dict[str, list[dict]] = field(default_factory=dict)
     # Baro Ki'Teer stock matching needed items: {location, until, items: [...]}.
     baro: dict | None = None
+    # Varzia's (Prime Resurgence) stock matching *fully-vaulted* needed
+    # equipment — the only non-trade way to obtain it: {location, until,
+    # items: [...]}.
+    vault_trader: dict | None = None
+    # Darvo's current daily deal, if it matches a needed item:
+    # {item, discount, expiry}.
+    daily_deal: dict | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -256,6 +263,8 @@ def plan_route(
     fissures: list | None = None,
     void_trader: dict | None = None,
     invasions: list | None = None,
+    vault_trader: dict | None = None,
+    daily_deals: list | None = None,
 ) -> RouteResult:
     """Assemble a full route plan from normalized ownership/target sets.
 
@@ -271,6 +280,10 @@ def plan_route(
     inventory) credits relics already held: they cost no farming, only the
     fissure crack — and vaulted parts whose relic sits in the vault are
     reported as still obtainable (``vaulted_crackable``).
+
+    ``vault_trader`` (Varzia / Prime Resurgence) is cross-referenced against
+    fully-vaulted needed equipment — the only non-trade way to obtain it.
+    ``daily_deals`` (Darvo) is checked for a match against anything needed.
     """
     needed_equipment = inventory.compute_needed(want, owned)
     result = RouteResult(missing_equipment=len(needed_equipment),
@@ -423,6 +436,11 @@ def plan_route(
                 result.baro = {"location": stock["location"],
                                "until": stock["until"], "items": hits}
 
+    if daily_deals is not None:
+        deal = worldstate.daily_deal(daily_deals)
+        if deal and items.normalize(deal["item"]) in needed_norms:
+            result.daily_deal = deal
+
     # Running invasions whose rewards match needed items → merged into
     # event_source so both UIs pick them up with no extra rendering path.
     invasion_hits: dict[str, list[str]] = {}
@@ -460,6 +478,17 @@ def plan_route(
                 })
         result.vaulted_crackable = sorted(
             crackable, key=lambda c: (-c["chance"], c["part"]))
+
+    # Varzia (Prime Resurgence): the only non-trade rescue for equipment that
+    # is otherwise fully vaulted (no relic drops anywhere right now).
+    if vault_trader is not None and result.vaulted_equipment:
+        vstock = worldstate.vault_trader_stock(vault_trader)
+        if vstock:
+            vaulted_norms = {items.normalize(e) for e in result.vaulted_equipment}
+            hits = sorted(vstock["items"][n] for n in vstock["items"] if n in vaulted_norms)
+            if hits:
+                result.vault_trader = {"location": vstock["location"],
+                                       "until": vstock["until"], "items": hits}
 
     # Market-only parts, grouped by owning equipment (e.g. Agkuza → Blade,
     # Guard, Handle, Blueprint) so the section reads per-weapon, not as a flat

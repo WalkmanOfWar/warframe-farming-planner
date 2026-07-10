@@ -1197,6 +1197,24 @@ function Results({ r }) {
         </Card>
       )}
 
+      {r.vault_trader && (
+        <Card style={{ marginBottom: 16, borderColor: C.goldBorder }}>
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <Gem size={15} color={C.gold} />
+              <span style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>
+                Varzia is selling {r.vault_trader.items.length} fully-vaulted item{r.vault_trader.items.length !== 1 ? 's' : ''} you need
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
+              Prime Resurgence — the only non-trade way to get these. At {r.vault_trader.location}
+              {r.vault_trader.until ? ` · ends ${new Date(r.vault_trader.until).toLocaleString()}` : ''}
+            </div>
+            <ItemGrid items={r.vault_trader.items} images={img} />
+          </div>
+        </Card>
+      )}
+
       {r.baro && (
         <Card style={{ marginBottom: 16, borderColor: C.eventBorder }}>
           <div style={{ padding: '16px 20px' }}>
@@ -1213,6 +1231,20 @@ function Results({ r }) {
             <ItemGrid items={r.baro.items} images={img} />
           </div>
         </Card>
+      )}
+
+      {r.daily_deal && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16,
+          padding: '10px 16px', background: C.accentFaint,
+          border: `1px solid ${C.accentBorder}`, borderRadius: 12, fontSize: 13,
+        }}>
+          <Zap size={14} color={C.accent} />
+          <span style={{ color: C.text }}>
+            Darvo's daily deal: <b>{r.daily_deal.item}</b>
+            {r.daily_deal.discount != null && ` — ${r.daily_deal.discount}% off`}
+          </span>
+        </div>
       )}
 
       {r.vaulted_crackable?.length > 0 && (
