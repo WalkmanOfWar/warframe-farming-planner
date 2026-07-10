@@ -206,7 +206,7 @@ def _prime_relic_plan(plan, prime_needed: set[str], refinement: str,
         r_chance, r_mode, r_rot, _node = plan.relic_source[rnorm]
         if r_chance <= 0:
             return float("inf")
-        rot_factor = effort.rotation_factor(r_rot)
+        rot_factor = effort.rotation_factor(r_rot, r_mode)
         return (100.0 / r_chance) * effort.mode_minutes(r_mode) * rot_factor
 
     def relic_effort(rnorm: str, cracks: float) -> tuple[float, float]:
@@ -326,7 +326,7 @@ def plan_route(
             if runs == float("inf"):
                 return float("inf")
             rot = plan.node_rotation.get(node.key)
-            return runs * effort.mode_minutes(node.game_mode) * effort.rotation_factor(rot)
+            return runs * effort.mode_minutes(node.game_mode) * effort.rotation_factor(rot, node.game_mode)
 
         route = optimize.optimize_by_cost(plan.direct_nodes, plan.direct_parts,
                                           node_cost)
@@ -336,7 +336,8 @@ def plan_route(
             covered = sorted(step.covers, key=disp)
             runs = effort.mission_runs([chances.get(p, 0.0) for p in covered])
             rot = plan.node_rotation.get(step.node.key)
-            minutes = (runs * effort.mode_minutes(step.node.game_mode) * effort.rotation_factor(rot)
+            minutes = (runs * effort.mode_minutes(step.node.game_mode)
+                       * effort.rotation_factor(rot, step.node.game_mode)
                        if runs != float("inf") else float("inf"))
             missions.append(Mission(
                 node=step.node.key, game_mode=step.node.game_mode,

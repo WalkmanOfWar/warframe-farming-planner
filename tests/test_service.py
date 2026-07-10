@@ -314,3 +314,34 @@ def test_equipment_prerequisites_surfaced_in_result():
                              items_data=items_data, mission_rewards={"missionRewards": {}})
     assert res.equipment_prerequisites == {"Akbolto": "Bolto"}
     assert res.no_part_source == {"Akbolto": ["Akbolto Blueprint"]}
+
+
+def test_disruption_relic_uses_lower_rotation_factor_than_generic_mode():
+    # Two identical relics, same chance, same rotation B, differing only by
+    # game mode -- Disruption's farm-time estimate must come out lower than
+    # a generic AABC-cadence mode (Survival), reflecting Disruption's actual
+    # (documented) faster path to a given rotation tier.
+    items_data = [{
+        "name": "Volt Prime", "masterable": True,
+        "components": [{
+            "name": "Chassis",
+            "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/VoltPrimeChassis",
+            "drops": [{"type": "Volt Prime Chassis", "chance": 11.0,
+                       "location": "Axi V8 Relic"}],
+        }],
+    }]
+    mission_rewards_disruption = {"missionRewards": {"Uranus": {"Ur": {
+        "gameMode": "Disruption",
+        "rewards": {"B": [{"itemName": "Axi V8 Relic", "chance": 10.0}]},
+    }}}}
+    mission_rewards_survival = {"missionRewards": {"Uranus": {"Ur": {
+        "gameMode": "Survival",
+        "rewards": {"B": [{"itemName": "Axi V8 Relic", "chance": 10.0}]},
+    }}}}
+    res_disruption = service.plan_route(
+        owned=set(), want={"volt prime"}, owned_parts=set(),
+        items_data=items_data, mission_rewards=mission_rewards_disruption)
+    res_survival = service.plan_route(
+        owned=set(), want={"volt prime"}, owned_parts=set(),
+        items_data=items_data, mission_rewards=mission_rewards_survival)
+    assert res_disruption.prime[0].minutes < res_survival.prime[0].minutes
