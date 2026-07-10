@@ -188,6 +188,7 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     try:
         candidates = service.select_price_candidates(result)
         result.market_prices = market.fetch_prices(candidates)
+        result.buy_vs_farm = service.build_buy_vs_farm(result, result.market_prices)
     except Exception:
         pass  # market prices are a bonus annotation, never required
 
@@ -230,6 +231,17 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
             for f in result.active_fissures.get(t.tier, [])[:3]:
                 tag = " [Steel Path]" if f["hard"] else (" [Void Storm]" if f["storm"] else "")
                 click.echo(f"      LIVE: {f['node']} · {f['mission']}{tag}")
+
+    if result.buy_vs_farm:
+        click.echo(f"\nBuy instead of farm — worst trade-offs first "
+                   f"({len(result.buy_vs_farm)} item(s)):")
+        for b in result.buy_vs_farm:
+            if b.minutes is None:
+                click.echo(f"  - {b.item}  ~{b.plat}p  [vaulted — no farm route exists]")
+            else:
+                shared = f", shares a run with {b.shared_with} other part(s)" if b.shared_with else ""
+                click.echo(f"  - {b.item}  ~{b.plat}p  "
+                           f"[farming {b.source} costs ~{_hours(b.minutes)}{shared}]")
 
     if result.baro:
         click.echo(f"\nBaro Ki'Teer has {len(result.baro['items'])} item(s) you need "

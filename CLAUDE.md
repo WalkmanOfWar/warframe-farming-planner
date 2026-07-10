@@ -281,5 +281,16 @@ Both the **Prime relic chain and the non-Prime direct chain are built**
    `/pc/arbitration` (broken upstream right now, and Vitus Essence isn't
    equipment anyway) were also checked and rejected.
 
+   `service.build_buy_vs_farm()` turns the raw `market_prices` dict into the
+   actual recommendation: each priced item paired with what farming it would
+   cost (the parent relic's/mission's `minutes`), ranked worst-farm-first —
+   fully-vaulted equipment always sorts to the top (no farm route exists at
+   all). A part is flagged with `shared_with` when its relic/mission also
+   covers other still-needed parts, since buying just that one part doesn't
+   remove the run from the route if you need the others anyway — the UI
+   surfaces this as a tooltip rather than overclaiming a guaranteed time save.
+   Also pure/no I/O; called from `cli.py`/`web.py` right alongside
+   `fetch_prices()`, same reasoning as `select_price_candidates`.
+
 The modular pipeline is structured so each can be added without disturbing the
 others; `optimize.py` stays objective-agnostic.

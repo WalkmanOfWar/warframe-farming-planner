@@ -1237,6 +1237,65 @@ function Results({ r }) {
         </Card>
       )}
 
+      {r.buy_vs_farm?.length > 0 && (
+        <Card style={{ marginBottom: 16, borderColor: C.goldBorder }}>
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <Gem size={15} color={C.gold} />
+              <span style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>
+                Buy instead of farm — worst trade-offs first
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
+              warframe.market average price vs. what farming it would actually cost.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {r.buy_vs_farm.map(b => (
+                <div key={b.item} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                }}>
+                  <ItemIcon url={img[b.item]} name={b.item} size={24} />
+                  <span style={{ fontSize: 13, color: C.text, minWidth: 0 }}>{b.item}</span>
+                  <span style={{ flex: 1 }} />
+                  {b.minutes == null ? (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, color: C.error,
+                      background: C.errorFaint, border: `1px solid ${C.errorBorder}`,
+                      borderRadius: 6, padding: '1px 7px',
+                    }}>vaulted — no farm route</span>
+                  ) : (
+                    <span style={{ fontSize: 12, color: C.muted }} title={
+                      b.shared_with > 0
+                        ? `Farming ${b.source} costs ~${fmtHours(b.minutes)}, but that run also covers ${b.shared_with} other needed part(s) — buying this alone won't remove it from your route.`
+                        : `Farming ${b.source} costs ~${fmtHours(b.minutes)} for this part alone.`
+                    }>
+                      vs ~{fmtHours(b.minutes)} farming{b.shared_with > 0 ? ` (shared×${b.shared_with + 1})` : ''}
+                    </span>
+                  )}
+                  {b.url ? (
+                    <a href={b.url} target="_blank" rel="noopener noreferrer"
+                      title={`warframe.market average price${b.tradable ? '' : ' (currently untradable)'} — click to view`}
+                      style={{
+                        fontSize: 12, fontWeight: 700, color: C.gold,
+                        background: C.goldFaint, border: `1px solid ${C.goldBorder}`,
+                        borderRadius: 6, padding: '2px 9px', textDecoration: 'none', whiteSpace: 'nowrap',
+                      }}>
+                      buy ~{b.plat}p
+                    </a>
+                  ) : (
+                    <span style={{
+                      fontSize: 12, fontWeight: 700, color: C.gold,
+                      background: C.goldFaint, border: `1px solid ${C.goldBorder}`,
+                      borderRadius: 6, padding: '2px 9px', whiteSpace: 'nowrap',
+                    }}>~{b.plat}p</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
+
       {r.vault_trader && (
         <Card style={{ marginBottom: 16, borderColor: C.goldBorder }}>
           <div style={{ padding: '16px 20px' }}>

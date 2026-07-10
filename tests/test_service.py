@@ -345,3 +345,39 @@ def test_disruption_relic_uses_lower_rotation_factor_than_generic_mode():
         owned=set(), want={"volt prime"}, owned_parts=set(),
         items_data=items_data, mission_rewards=mission_rewards_survival)
     assert res_disruption.prime[0].minutes < res_survival.prime[0].minutes
+
+
+def test_buy_vs_farm_ranks_vaulted_first_then_worst_farm():
+    res = service.RouteResult(
+        missing_equipment=3,
+        vaulted_equipment=["Vaulted Prime"],
+        prime=[service.PrimeRelic(relic="Axi X1 Relic", tier="Axi",
+                                  parts=["Slow Prime Part"], minutes=500.0)],
+        non_prime=[service.Mission(node="A", game_mode="Capture",
+                                   parts=["Fast Part"], minutes=10.0)],
+    )
+    prices = {
+        "Vaulted Prime": {"plat": 80, "tradable": True, "url": "u1"},
+        "Slow Prime Part": {"plat": 15, "tradable": True, "url": "u2"},
+        "Fast Part": {"plat": 5, "tradable": True, "url": "u3"},
+    }
+    out = service.build_buy_vs_farm(res, prices)
+    assert [b.item for b in out] == ["Vaulted Prime", "Slow Prime Part", "Fast Part"]
+    assert out[0].minutes is None and out[0].source is None
+    assert out[1].minutes == 500.0 and out[1].source == "Axi X1 Relic"
+
+
+def test_buy_vs_farm_flags_shared_relic_parts():
+    res = service.RouteResult(
+        missing_equipment=1,
+        prime=[service.PrimeRelic(relic="Axi X1 Relic", tier="Axi",
+                                  parts=["Part A", "Part B"], minutes=300.0)],
+    )
+    prices = {"Part A": {"plat": 10, "tradable": True, "url": None}}
+    out = service.build_buy_vs_farm(res, prices)
+    assert out[0].shared_with == 1  # one other needed part shares this crack
+
+
+def test_buy_vs_farm_skips_unpriced_and_unknown_names():
+    res = service.RouteResult(missing_equipment=1)
+    assert service.build_buy_vs_farm(res, {"Untracked Item": {"plat": 5, "tradable": True, "url": None}}) == []
