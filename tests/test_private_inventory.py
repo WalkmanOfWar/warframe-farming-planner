@@ -96,3 +96,39 @@ def test_owned_relics_ignores_zero_counts_and_unknown_types():
         {"ItemType": "/Lotus/Types/Items/MiscItems/OrokinCell", "ItemCount": 9},
     ]}
     assert pi.owned_relics(inv, RELIC_ITEMS) == {}
+
+
+RESOURCE_ITEMS = [
+    {
+        "name": "Rhino",
+        "components": [
+            {"name": "Blueprint",
+             "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/RhinoBlueprint"},
+            {"name": "Neurodes",
+             "uniqueName": "/Lotus/Types/Items/MiscItems/Neurode"},
+        ],
+    },
+]
+
+
+def test_owned_resources_counts_by_display_name():
+    inv = {"MiscItems": [
+        {"ItemType": "/Lotus/Types/Items/MiscItems/Neurode", "ItemCount": 7},
+    ]}
+    assert pi.owned_resources(inv, RESOURCE_ITEMS) == {"Neurodes": 7}
+
+
+def test_owned_resources_excludes_farmable_parts():
+    # A /Recipes/ part must never show up as a "resource" -- it's what
+    # items.is_part_component already treats as a farmable part.
+    inv = {"MiscItems": [
+        {"ItemType": "/Lotus/Types/Recipes/WarframeRecipes/RhinoBlueprint", "ItemCount": 1},
+    ]}
+    assert pi.owned_resources(inv, RESOURCE_ITEMS) == {}
+
+
+def test_owned_resources_ignores_zero_counts():
+    inv = {"MiscItems": [
+        {"ItemType": "/Lotus/Types/Items/MiscItems/Neurode", "ItemCount": 0},
+    ]}
+    assert pi.owned_resources(inv, RESOURCE_ITEMS) == {}

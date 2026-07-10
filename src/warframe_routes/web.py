@@ -15,8 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import (catalog, data, inventory, items, market, private_inventory,
-               service, sync, worldstate)
+from . import (blueprint_costs, catalog, data, inventory, items, market,
+               private_inventory, service, sync, worldstate)
 
 app = FastAPI(title="Warframe Farming Planner")
 
@@ -103,6 +103,7 @@ def route(req: RouteRequest) -> dict:
     have: set[str] = set()
     owned_parts: set[str] = set()
     owned_relics: dict[str, int] = {}
+    owned_resources: dict[str, int] | None = None
     if inv is not None:
         types = private_inventory.collect_item_types(inv)
         have |= _norm(sync.resolve_names(types, items_data))
@@ -112,6 +113,7 @@ def route(req: RouteRequest) -> dict:
         have |= pending_equip
         owned_parts |= _norm(pending_parts)
         owned_relics = private_inventory.owned_relics(inv, items_data)
+        owned_resources = private_inventory.owned_resources(inv, items_data)
     if req.account_id and not inv_is_full:
         try:
             have |= _norm(sync.fetch_owned(req.account_id))
@@ -164,6 +166,13 @@ def route(req: RouteRequest) -> dict:
         result.buy_vs_farm = service.build_buy_vs_farm(result, result.market_prices)
     except Exception:
         pass  # market prices are a bonus annotation, never required
+
+    try:
+        blueprints = blueprint_costs.load_blueprints(force_refresh=req.refresh)
+        result.resource_needs = service.build_resource_needs(
+            result.missing_equipment_names, blueprints, owned_resources)
+    except Exception:
+        pass  # resource costs are a bonus annotation, never required
 
     return result.to_dict()
 

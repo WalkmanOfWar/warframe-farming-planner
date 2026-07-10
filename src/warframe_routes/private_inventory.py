@@ -169,6 +169,35 @@ def owned_relics(inventory: dict, items_data: list[dict]) -> dict[str, int]:
     return {r: n for r, n in counts.items() if n > 0}
 
 
+def owned_resources(inventory: dict, items_data: list[dict]) -> dict[str, int]:
+    """Count raw crafting resources (Orokin Cell, Ferrite, Neurodes, ...) held
+    in the inventory, keyed by plain resource display name (matching the
+    naming :mod:`blueprint_costs` uses) -- built from exactly the component
+    entries the acquisition chain already filters OUT as "not a farmable
+    part" (``items.is_part_component``), so this and the acquisition chain
+    can never disagree about what counts as a resource vs. a part.
+    """
+    res_index: dict[str, str] = {}  # uniqueName -> resource display name
+    for it in items_data:
+        for comp in it.get("components") or []:
+            uniq = comp.get("uniqueName") or ""
+            name = comp.get("name") or ""
+            if uniq and name and not items.is_part_component(uniq):
+                res_index[uniq] = name
+
+    counts: dict[str, int] = {}
+    for value in inventory.values():
+        if not isinstance(value, list):
+            continue
+        for entry in value:
+            if not isinstance(entry, dict):
+                continue
+            rname = res_index.get(entry.get("ItemType", ""))
+            if rname:
+                counts[rname] = counts.get(rname, 0) + int(entry.get("ItemCount", 1) or 0)
+    return {r: n for r, n in counts.items() if n > 0}
+
+
 def pending_owned(
     inventory: dict, items_data: list[dict]
 ) -> tuple[set[str], set[str]]:

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import click
 
-from . import (catalog, data, inventory, items, market, private_inventory,
-               service, sync, worldstate)
+from . import (blueprint_costs, catalog, data, inventory, items, market,
+               private_inventory, service, sync, worldstate)
 
 
 def _hours(minutes: float) -> str:
@@ -161,12 +161,14 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
 
     owned_parts: set[str] = set()
     owned_relics: dict[str, int] = {}
+    owned_resources: dict[str, int] | None = None
     if inv is not None:
         owned_parts |= {n.strip().casefold()
                         for n in private_inventory.owned_parts(inv, items_data)}
         _, pending_parts = private_inventory.pending_owned(inv, items_data)
         owned_parts |= {n.strip().casefold() for n in pending_parts}
         owned_relics = private_inventory.owned_relics(inv, items_data)
+        owned_resources = private_inventory.owned_resources(inv, items_data)
     if have_parts:
         owned_parts |= inventory.load_item_list(have_parts)
 
@@ -204,6 +206,13 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         result.buy_vs_farm = service.build_buy_vs_farm(result, result.market_prices)
     except Exception:
         pass  # market prices are a bonus annotation, never required
+
+    try:
+        blueprints = blueprint_costs.load_blueprints(force_refresh=refresh)
+        result.resource_needs = service.build_resource_needs(
+            result.missing_equipment_names, blueprints, owned_resources)
+    except Exception:
+        pass  # resource costs are a bonus annotation, never required
 
     if not result.missing_equipment:
         click.echo("Nothing to farm — you already own everything in the target set.")
@@ -259,6 +268,21 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                 shared = f", shares a run with {b.shared_with} other part(s)" if b.shared_with else ""
                 click.echo(f"  - {b.item}  ~{b.plat}p  "
                            f"[farming {b.source} costs ~{_hours(b.minutes)}{shared}]")
+
+    if result.resource_needs:
+        has_deficit = any(r.short_by is not None for r in result.resource_needs)
+        label = "still need" if has_deficit else "total needed"
+        click.echo(f"\nCrafting resources {label} for everything missing "
+                   f"({len(result.resource_needs)} resource(s), partial data — "
+                   "not every item's recipe is known):")
+        for r in result.resource_needs:
+            if r.short_by is not None:
+                if r.short_by == 0:
+                    continue  # already have enough of this one
+                click.echo(f"  - {r.resource}: need {r.short_by} more "
+                           f"(have {r.owned}, recipe needs {r.need})")
+            else:
+                click.echo(f"  - {r.resource}: {r.need}")
 
     if result.baro:
         click.echo(f"\nBaro Ki'Teer has {len(result.baro['items'])} item(s) you need "
