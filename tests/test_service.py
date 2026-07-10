@@ -291,3 +291,26 @@ def test_necramech_vault_parts_get_relabeled_not_market_only():
     assert res.no_part_source == {}  # not left looking Market-only
     label = "Necramech gear — Isolation Vault (Cambion Drift, Deimos); check in-game"
     assert res.special_source[label] == ["Voidrig Blueprint", "Voidrig Capsule"]
+
+
+def test_equipment_prerequisites_surfaced_in_result():
+    items_data = [
+        {"name": "Bolto", "masterable": True,
+         "uniqueName": "/Lotus/Weapons/Tenno/Pistol/CrossBow",
+         "components": [
+             {"name": "Blueprint",
+              "uniqueName": "/Lotus/Types/Recipes/Weapons/BoltoBlueprint",
+              "drops": [{"type": "Bolto Blueprint", "location": "Venus/Fossa (Assassination)"}]},
+         ]},
+        {"name": "Akbolto", "masterable": True,
+         "uniqueName": "/Lotus/Weapons/Tenno/Akimbo/AkimboBolto",
+         "components": [
+             {"name": "Blueprint",
+              "uniqueName": "/Lotus/Types/Recipes/Weapons/AkboltoBlueprint", "drops": []},
+             {"name": "Bolto", "uniqueName": "/Lotus/Weapons/Tenno/Pistol/CrossBow", "drops": []},
+         ]},
+    ]
+    res = service.plan_route(owned=set(), want={"akbolto"}, owned_parts=set(),
+                             items_data=items_data, mission_rewards={"missionRewards": {}})
+    assert res.equipment_prerequisites == {"Akbolto": "Bolto"}
+    assert res.no_part_source == {"Akbolto": ["Akbolto Blueprint"]}

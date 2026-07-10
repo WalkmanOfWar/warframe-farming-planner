@@ -140,3 +140,48 @@ def test_necramech_vault_part_is_not_silently_dropped():
 def test_necramech_blueprint_also_registered_as_orphan_part():
     plan = build_plan(NECRAMECH, {"missionRewards": {}}, {"voidrig"})
     assert "voidrig blueprint" in plan.orphan_parts
+
+
+PREREQ_ITEMS = [
+    {
+        "name": "Bolto",
+        "masterable": True,
+        "uniqueName": "/Lotus/Weapons/Tenno/Pistol/CrossBow",
+        "components": [
+            {"name": "Blueprint",
+             "uniqueName": "/Lotus/Types/Recipes/Weapons/BoltoBlueprint",
+             "drops": [{"type": "Bolto Blueprint", "location": "Venus/Fossa (Assassination)"}]},
+        ],
+    },
+    {
+        "name": "Akbolto",
+        "masterable": True,
+        "uniqueName": "/Lotus/Weapons/Tenno/Akimbo/AkimboBolto",
+        "components": [
+            {"name": "Blueprint",
+             "uniqueName": "/Lotus/Types/Recipes/Weapons/AkboltoBlueprint",
+             "drops": []},
+            # Not a drop-table part at all -- a reference to the whole Bolto
+            # weapon's own uniqueName: you must already own one.
+            {"name": "Bolto", "uniqueName": "/Lotus/Weapons/Tenno/Pistol/CrossBow",
+             "drops": []},
+        ],
+    },
+]
+
+
+def test_prerequisite_weapon_is_detected():
+    plan = build_plan(PREREQ_ITEMS, {"missionRewards": {}}, {"akbolto"})
+    assert plan.equipment_prerequisites == {"Akbolto": "Bolto"}
+
+
+def test_prerequisite_component_does_not_pollute_orphan_parts():
+    plan = build_plan(PREREQ_ITEMS, {"missionRewards": {}}, {"akbolto"})
+    # The "Bolto" reference itself must never show up as a farmable part --
+    # only the real Blueprint component should land in orphan_parts.
+    assert list(plan.orphan_parts.values()) == ["Akbolto Blueprint"]
+
+
+def test_no_prerequisite_when_not_needed():
+    plan = build_plan(PREREQ_ITEMS, {"missionRewards": {}}, {"bolto"})
+    assert plan.equipment_prerequisites == {}
