@@ -239,3 +239,34 @@ def test_to_dict_is_json_shaped():
     assert isinstance(d, dict)
     assert isinstance(d["special_source"], dict)
     assert isinstance(d["prime"], list) and isinstance(d["prime"][0], dict)
+
+
+def test_select_price_candidates_includes_vaulted_unconditionally():
+    res = service.RouteResult(missing_equipment=1, vaulted_equipment=["Volt Prime", "Ash Prime"])
+    assert service.select_price_candidates(res) == ["Volt Prime", "Ash Prime"]
+
+
+def test_select_price_candidates_includes_high_time_parts_ranked_first():
+    res = service.RouteResult(missing_equipment=1, non_prime=[
+        service.Mission(node="A", game_mode="Capture", parts=["Cheap Part"], minutes=5.0),
+        service.Mission(node="B", game_mode="Capture", parts=["Slow Part"], minutes=500.0),
+    ], prime=[
+        service.PrimeRelic(relic="Axi X1 Relic", tier="Axi", parts=["Slower Prime Part"], minutes=1000.0),
+    ])
+    out = service.select_price_candidates(res, min_minutes=120.0)
+    assert "Cheap Part" not in out           # below the time threshold
+    assert out == ["Slower Prime Part", "Slow Part"]   # ranked by parent time, desc
+
+
+def test_select_price_candidates_respects_max_items_cap():
+    res = service.RouteResult(missing_equipment=1,
+                              vaulted_equipment=[f"Item {i}" for i in range(20)])
+    assert len(service.select_price_candidates(res, max_items=5)) == 5
+
+
+def test_select_price_candidates_dedupes_shared_parts():
+    res = service.RouteResult(missing_equipment=1, prime=[
+        service.PrimeRelic(relic="A", tier="Axi", parts=["Shared Part"], minutes=200.0),
+        service.PrimeRelic(relic="B", tier="Axi", parts=["Shared Part"], minutes=300.0),
+    ])
+    assert service.select_price_candidates(res, min_minutes=120.0) == ["Shared Part"]

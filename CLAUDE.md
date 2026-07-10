@@ -192,15 +192,48 @@ Both the **Prime relic chain and the non-Prime direct chain are built**
    `worldstate.py` filters event-only bounty drops against live
    `syndicateMissions` (15-min cache, graceful fallback when offline). Duviri
    Circuit gear is detected via `/Gameplay/Duviri/` component uniqueNames.
-   Nightwave cred-shop items are *not* labelled — `/pc/nightwave` exposes
-   challenges/reputation only, never the rotating shop stock; there is no data
-   source, live or static, short of hand-maintaining a JSON that goes stale
-   every ~3-month season (rejected — not worth the upkeep for one section).
-   Sortie/Archon Hunt were also evaluated and rejected: `/pc/sortie` and
+   Several other live sections are cross-referenced against needed items, all
+   in `service.plan_route`: `fissures` (which relic tiers are actionable
+   *right now*, plus double-dip detection when a route node is itself an open
+   fissure — `Mission.live_fissure`/`PrimeRelic.tier_live`/`farm_node_live`),
+   `voidTrader` (Baro Ki'Teer stock), `invasions` (matching rewards),
+   `vaultTrader` (Varzia/Prime Resurgence — the *only* non-trade way to buy
+   fully-vaulted equipment, matched against `vaulted_equipment`; store item
+   names are inconsistent, e.g. `"Prime Corinth"` for `"Corinth Prime"`, so
+   `worldstate.vault_trader_stock` indexes both word orders), and
+   `dailyDeals` (Darvo's single rotating item). Nightwave cred-shop items are
+   *not* labelled — `/pc/nightwave` exposes challenges/reputation only, never
+   the rotating shop stock; there is no data source, live or static, short of
+   hand-maintaining a JSON that goes stale every ~3-month season (rejected —
+   not worth the upkeep for one section). Sortie/Archon Hunt were also
+   evaluated and rejected: `/pc/sortie` and
    `/pc/archonHunt` both report `rewardPool: "Sortie Rewards"` (a label, not
    an item list), and even with real data these modes award Forma/Riven/
    Legendary Core/Archon Shards — not equipment parts, so they wouldn't fit
-   this tool's "missing gear" model regardless.
+   this tool's "missing gear" model regardless. `flashSales` was checked too:
+   all 24 live entries are cosmetic bundles/supporter packs, no equipment.
+
+4. **`market.py`** — trade-vs-farm advice via `/pricecheck` (WFCD's proxy for
+   warframe.market). Farming isn't always the right call: some parts take
+   dozens of hours but cost a handful of platinum. `service.
+   select_price_candidates()` (pure, no I/O) picks a *bounded* set worth a
+   lookup — every fully-vaulted equipment name unconditionally, plus parts
+   whose parent relic/mission time is ≥ `PRICE_CHECK_MIN_MINUTES` (120),
+   capped at `PRICE_CHECK_MAX_ITEMS` (15) since there's no bulk price
+   endpoint. `market.fetch_prices()` then does the actual (parallelized,
+   30-min-cached) HTTP calls — called from `cli.py`/`web.py` **after**
+   `plan_route` returns, not from inside it, preserving the invariant that
+   `plan_route` itself makes no network calls (matters for testability: its
+   tests feed plain dicts, no mocking). Full equipment queries try a
+   `"<name> Set"` suffix first (the warframe.market full-blueprint-bundle
+   convention — `"Titania Prime"` alone would match a stray single part at a
+   misleadingly low price) falling back to the bare name for loose parts,
+   which are already individually tradable under their own name. This was
+   found via a full audit of WFCD's OpenAPI spec (99 endpoints) requested to
+   check for anything else worth optimizing — `/drops` (a flatter, less
+   useful re-serving of the same source data we already parse directly) and
+   `/pc/arbitration` (broken upstream right now, and Vitus Essence isn't
+   equipment anyway) were also checked and rejected.
 
 The modular pipeline is structured so each can be added without disturbing the
 others; `optimize.py` stays objective-agnostic.

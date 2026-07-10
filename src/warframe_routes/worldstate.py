@@ -14,7 +14,10 @@ Further sections consumed via :func:`load_section`:
 * ``voidTrader`` — Baro Ki'Teer's current stock, cross-referenced against
   needed no-mission-source gear;
 * ``invasions`` — running invasions whose rewards (Wraith/Vandal parts, …)
-  match needed items.
+  match needed items;
+* ``vaultTrader`` — Varzia's Prime Resurgence stock, the only non-trade way to
+  buy fully-vaulted Prime gear, cross-referenced against ``vaulted_equipment``;
+* ``dailyDeals`` — Darvo's single rotating discounted item.
 
 TTL is 15 minutes: open-world bounties rotate every 2.5–3 hours and fissures
 every few minutes-to-hours, so this is a reasonable accuracy/traffic balance.
@@ -140,6 +143,65 @@ def baro_stock(trader: dict) -> dict | None:
         return None
     return {"location": trader.get("location", "?"),
             "until": trader.get("expiry"), "items": stock}
+
+
+def _is_equipment_uniq(uniq: str) -> bool:
+    """True for a store uniqueName that is actual gear (frame/weapon), not a
+    bundle package, skin, syandana, ephemera, or ship decoration."""
+    if any(seg in uniq for seg in ("/Packages/", "/Skins/", "/Upgrades/", "ShipDecos")):
+        return False
+    return "/Powersuits/" in uniq or "/Weapons/" in uniq
+
+
+def vault_trader_stock(trader: dict) -> dict | None:
+    """Varzia's (Prime Resurgence) live stock as ``{location, until, items:
+    {norm: display}}``, or None when she isn't currently trading.
+
+    Prime Resurgence sells direct plat/Regal-Aya access to previously-vaulted
+    Prime gear — the *only* way to get a fully-vaulted item without trading —
+    so this is cross-referenced against ``vaulted_equipment``, not the normal
+    drop-based plan. Store item names are inconsistent (``"Prime Corinth"``
+    instead of ``"Corinth Prime"``, trailing ``" Weapon"``), so both the raw
+    name and a word-order-flipped variant are indexed; bundle packages,
+    skins, syandanas and other cosmetics are excluded.
+    """
+    if not isinstance(trader, dict):
+        return None
+    inv = trader.get("inventory") or []
+    if not inv or not _not_expired(trader.get("expiry")):
+        return None
+    stock: dict[str, str] = {}
+    for e in inv:
+        if not isinstance(e, dict):
+            continue
+        raw = (e.get("item") or "").strip()
+        uniq = e.get("uniqueName") or ""
+        if not raw or not _is_equipment_uniq(uniq):
+            continue
+        candidates = [raw]
+        if raw.endswith(" Weapon"):
+            candidates.append(raw[: -len(" Weapon")].strip())
+        if raw.startswith("Prime "):
+            candidates.append(f"{raw[len('Prime '):]} Prime")
+        for c in candidates:
+            stock.setdefault(normalize(c), c)
+    if not stock:
+        return None
+    return {"location": trader.get("location", "?"),
+            "until": trader.get("expiry"), "items": stock}
+
+
+def daily_deal(deals: list) -> dict | None:
+    """Darvo's current single-item daily deal as ``{item, discount, expiry}``,
+    or None when the feed is empty/expired."""
+    for d in deals or []:
+        if not isinstance(d, dict) or not d.get("item"):
+            continue
+        if not _not_expired(d.get("expiry")):
+            continue
+        return {"item": d["item"], "discount": d.get("discount"),
+                "expiry": d.get("expiry")}
+    return None
 
 
 def invasion_rewards(invasions: list) -> dict[str, set[str]]:

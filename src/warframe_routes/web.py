@@ -15,7 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import catalog, data, inventory, items, private_inventory, service, sync, worldstate
+from . import (catalog, data, inventory, items, market, private_inventory,
+               service, sync, worldstate)
 
 app = FastAPI(title="Warframe Farming Planner")
 
@@ -153,7 +154,16 @@ def route(req: RouteRequest) -> dict:
         fissures=_ws("fissures"),
         void_trader=_ws("voidTrader"),
         invasions=_ws("invasions"),
+        vault_trader=_ws("vaultTrader"),
+        daily_deals=_ws("dailyDeals"),
     )
+
+    try:
+        candidates = service.select_price_candidates(result)
+        result.market_prices = market.fetch_prices(candidates)
+    except Exception:
+        pass  # market prices are a bonus annotation, never required
+
     return result.to_dict()
 
 
