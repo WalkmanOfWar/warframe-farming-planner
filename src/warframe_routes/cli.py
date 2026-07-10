@@ -156,6 +156,12 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     except Exception:
         syndicate_missions = None  # worldstate unavailable — proceed without filtering
 
+    def _ws(name):
+        try:
+            return worldstate.load_section(name, force_refresh=refresh)
+        except Exception:
+            return None  # live section unavailable — plan works without it
+
     result = service.plan_route(
         owned=have,
         want=want,
@@ -166,6 +172,9 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         transient_rewards=data.load_transient_raw(force_refresh=refresh),
         syndicate_missions=syndicate_missions,
         owned_relics=owned_relics,
+        fissures=_ws("fissures"),
+        void_trader=_ws("voidTrader"),
+        invasions=_ws("invasions"),
     )
 
     if not result.missing_equipment:
@@ -192,12 +201,23 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         for pr in result.prime:
             cracks = f"  (~{pr.cracks} cracks)" if pr.cracks is not None else ""
             owned = f"  [own {pr.owned}]" if pr.owned else ""
-            click.echo(f"  {pr.relic}{_effort(pr.runs, pr.minutes)}{cracks}{owned}")
+            hint = (f"  → crack as {pr.best_refinement} (~{_hours(pr.best_refinement_minutes)})"
+                    if pr.best_refinement else "")
+            click.echo(f"  {pr.relic}{_effort(pr.runs, pr.minutes)}{cracks}{owned}{hint}")
             for part in pr.parts:
                 click.echo(f"     - {part}")
         click.echo("\n  Relic tiers to farm:")
         for t in result.tiers:
             click.echo(f"    {t.tier}: {t.where}")
+            for f in result.active_fissures.get(t.tier, [])[:3]:
+                tag = " [Steel Path]" if f["hard"] else (" [Void Storm]" if f["storm"] else "")
+                click.echo(f"      LIVE: {f['node']} · {f['mission']}{tag}")
+
+    if result.baro:
+        click.echo(f"\nBaro Ki'Teer has {len(result.baro['items'])} item(s) you need "
+                   f"(at {result.baro['location']}, until {result.baro['until']}):")
+        for item in result.baro["items"]:
+            click.echo(f"  - {item}")
 
     if result.total_minutes:
         click.echo(f"\nEstimated total time: ~{_hours(result.total_minutes)} "

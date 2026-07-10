@@ -58,6 +58,11 @@ class PrimeRelic:
     farm_mode: str | None = None   # e.g. "Capture"
     farm_chance: float | None = None  # drop chance % at that node
     owned: int = 0                 # copies already held (credit against farming)
+    # Per-relic refinement advice: the refinement that minimizes expected time
+    # for THIS relic's needed parts (Radiant boosts rares but hurts commons, so
+    # the plan-wide choice is often wrong per relic). None = chosen one is best.
+    best_refinement: str | None = None
+    best_refinement_minutes: float | None = None
 
 
 @dataclass
@@ -97,7 +102,14 @@ class RouteResult:
     total_minutes: float | None = None      # non-Prime missions + Prime parts
     # Needed relics or parts that also drop from transient/event objectives,
     # grouped by objective name: "Arbitrations (Rot B)" → ["Axi N3 Relic", ...]
+    # Live invasions with matching rewards are merged in ("Invasion — <node>").
     event_source: dict[str, list[str]] = field(default_factory=dict)
+    # Live void fissures for the tiers this plan needs: tier → fissure dicts
+    # ({node, mission, hard, storm, expiry}) — "crack a Lith" is only actionable
+    # when a Lith fissure is actually open somewhere.
+    active_fissures: dict[str, list[dict]] = field(default_factory=dict)
+    # Baro Ki'Teer stock matching needed items: {location, until, items: [...]}.
+    baro: dict | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -141,9 +153,9 @@ def _prime_relic_plan(plan, prime_needed: set[str], refinement: str,
     yields ``(farm_runs, minutes)`` with the owned credit applied.
     """
     owned_relics = owned_relics or {}
-    def dchance(pnorm: str, rnorm: str) -> float:
+    def dchance(pnorm: str, rnorm: str, ref: str | None = None) -> float:
         refs = plan.part_relic_refine_chance.get(pnorm, {}).get(rnorm, {})
-        raw = refs.get(refinement) or refs.get("Intact") or next(
+        raw = refs.get(ref or refinement) or refs.get("Intact") or next(
             iter(refs.values()), 0.0)
         if squad_size > 1:
             return effort.effective_squad_chance_pct(raw, squad_size)
@@ -233,6 +245,9 @@ def plan_route(
     syndicate_missions: list | None = None,
     squad_radiant: bool = False,
     owned_relics: dict[str, int] | None = None,
+    fissures: list | None = None,
+    void_trader: dict | None = None,
+    invasions: list | None = None,
 ) -> RouteResult:
     """Assemble a full route plan from normalized ownership/target sets.
 
@@ -326,13 +341,32 @@ def plan_route(
             runs = farm_runs + cracks  # relic-farm runs + cracks
             tier = items.relic_tier(step.node.name)
             tiers_needed.add(tier)
+            # Per-relic refinement advice: Radiant boosts rares but *lowers*
+            # common chances, so the plan-wide refinement can be wrong for this
+            # particular relic. Recommend the time-minimizing one when it beats
+            # the chosen refinement meaningfully (> 1 minute).
+            best_ref, best_min = None, None
+            if minutes != float("inf"):
+                for ref in effort.REFINEMENTS:
+                    ref_cracks = effort.mission_runs(
+                        [dchance(p, rnorm, ref) for p in step.covers])
+                    if ref_cracks == float("inf"):
+                        continue
+                    ref_min = relic_effort(rnorm, ref_cracks)[1]
+                    if best_min is None or ref_min < best_min:
+                        best_ref, best_min = ref, ref_min
+                if best_ref == refinement or (best_min is not None
+                                              and minutes - best_min <= 1.0):
+                    best_ref, best_min = None, None
             relics_out.append(PrimeRelic(
                 relic=step.node.name, tier=tier,
                 parts=sorted(disp(p) for p in step.covers),
                 cracks=_runs(cracks), runs=_runs(runs), minutes=_mins(minutes),
                 farm_node=r_node, farm_mode=r_mode,
                 farm_chance=round(r_chance, 2) if r_chance else None,
-                owned=(owned_relics or {}).get(rnorm, 0)))
+                owned=(owned_relics or {}).get(rnorm, 0),
+                best_refinement=best_ref,
+                best_refinement_minutes=_mins(best_min)))
         # Fastest (cheapest) relics first; unobtainable last.
         relics_out.sort(key=lambda r: (r.minutes is None, r.minutes or 0))
         result.prime = relics_out
@@ -341,6 +375,40 @@ def plan_route(
         TierGuide(tier=t, where=RELIC_TIER_GUIDE.get(t, GENERIC_TIER_HINT))
         for t in sorted(tiers_needed)
     ]
+
+    # Live fissures for the tiers this plan needs — "crack an Axi" is only
+    # actionable when an Axi fissure is actually open right now.
+    if fissures and tiers_needed:
+        by_tier: dict[str, list[dict]] = {}
+        for f in worldstate.active_fissures(fissures):
+            if f["tier"] in tiers_needed:
+                by_tier.setdefault(f["tier"], []).append(f)
+        for lst in by_tier.values():  # normal missions first, storms/SP last
+            lst.sort(key=lambda f: (f["storm"], f["hard"], f["node"]))
+        result.active_fissures = dict(sorted(by_tier.items()))
+
+    # Everything the player still needs, normalized — for Baro/invasion matching.
+    needed_norms = set(plan.part_display) | set(needed_equipment)
+
+    if void_trader is not None:
+        stock = worldstate.baro_stock(void_trader)
+        if stock:
+            hits = sorted(stock["items"][n] for n in stock["items"] if n in needed_norms)
+            if hits:
+                result.baro = {"location": stock["location"],
+                               "until": stock["until"], "items": hits}
+
+    # Running invasions whose rewards match needed items → merged into
+    # event_source so both UIs pick them up with no extra rendering path.
+    invasion_hits: dict[str, list[str]] = {}
+    if invasions:
+        for norm, descs in worldstate.invasion_rewards(invasions).items():
+            if norm in needed_norms:
+                # Parts have a tracked display name; bare equipment falls back
+                # to title-case (invasion rewards are simple ASCII names).
+                name = plan.part_display.get(norm) or norm.title()
+                for d in descs:
+                    invasion_hits.setdefault(d, []).append(name)
 
     from collections import defaultdict as _dd
 
@@ -463,6 +531,9 @@ def plan_route(
                 for obj in tmap.get(items.normalize(part), ()):
                     ev[obj].append(part)
         result.event_source = {obj: sorted(set(ps)) for obj, ps in sorted(ev.items())}
+
+    for desc, its in sorted(invasion_hits.items()):
+        result.event_source.setdefault(desc, sorted(set(its)))
 
     return result
 

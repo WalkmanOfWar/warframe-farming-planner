@@ -972,6 +972,16 @@ function Results({ r }) {
                           borderRadius: 6, padding: '1px 7px',
                         }}>own {pr.owned}</span>
                       )}
+                      {pr.best_refinement && (
+                        <span title={`Refining changes in-relic chances; for this relic ${pr.best_refinement} minimizes total time (traces: Exceptional 25 / Flawless 50 / Radiant 100).`}
+                          style={{
+                            fontSize: 11, fontWeight: 700, color: C.event,
+                            background: C.eventFaint, border: `1px solid ${C.eventBorder}`,
+                            borderRadius: 6, padding: '1px 7px', cursor: 'help',
+                          }}>
+                          crack as {pr.best_refinement} → ~{fmtHours(pr.best_refinement_minutes)}
+                        </span>
+                      )}
                       <span style={{ flex: 1 }} />
                       <EffortTag runs={pr.runs} minutes={pr.minutes} tooltip={relicTooltip} />
                     </div>
@@ -1014,19 +1024,54 @@ function Results({ r }) {
                     Relic tiers to farm
                   </div>
                   {r.tiers.map(t => (
-                    <div key={t.tier} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-                      <TierBadge tier={t.tier} />
-                      <span style={{ color: C.muted, fontSize: 14, flex: 1 }}>{t.where}</span>
-                      {tierRuns[t.tier] != null && (
-                        <span style={{ fontSize: 12, color: C.accent, fontWeight: 600 }}>
-                          ~{Math.round(tierRuns[t.tier])} runs{tierMins[t.tier] != null ? ` · ~${fmtHours(tierMins[t.tier])}` : ''}
-                        </span>
-                      )}
+                    <div key={t.tier} style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <TierBadge tier={t.tier} />
+                        <span style={{ color: C.muted, fontSize: 14, flex: 1 }}>{t.where}</span>
+                        {tierRuns[t.tier] != null && (
+                          <span style={{ fontSize: 12, color: C.accent, fontWeight: 600 }}>
+                            ~{Math.round(tierRuns[t.tier])} runs{tierMins[t.tier] != null ? ` · ~${fmtHours(tierMins[t.tier])}` : ''}
+                          </span>
+                        )}
+                      </div>
+                      {(r.active_fissures?.[t.tier] || []).slice(0, 3).map(f => (
+                        <div key={f.node + f.mission} style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          paddingLeft: 76, fontSize: 12, color: C.muted, marginTop: 3,
+                        }}>
+                          <span style={{
+                            width: 6, height: 6, borderRadius: '50%',
+                            background: C.success, flexShrink: 0,
+                          }} />
+                          <span style={{ color: C.success, fontWeight: 700, fontSize: 10, letterSpacing: '0.06em' }}>LIVE</span>
+                          <span>{f.node} · {f.mission}</span>
+                          {f.hard && <span style={{ color: C.event, fontSize: 10, fontWeight: 700 }}>STEEL PATH</span>}
+                          {f.storm && <span style={{ color: C.accent, fontSize: 10, fontWeight: 700 }}>VOID STORM</span>}
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
               )
             })()}
+          </div>
+        </Card>
+      )}
+
+      {r.baro && (
+        <Card style={{ marginBottom: 16, borderColor: C.eventBorder }}>
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <ShoppingBag size={15} color={C.event} />
+              <span style={{ fontWeight: 700, fontSize: 15, color: C.event }}>
+                Baro Ki'Teer has {r.baro.items.length} item{r.baro.items.length !== 1 ? 's' : ''} you need
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
+              At {r.baro.location}
+              {r.baro.until ? ` · leaves ${new Date(r.baro.until).toLocaleString()}` : ''}
+            </div>
+            <ItemGrid items={r.baro.items} images={img} />
           </div>
         </Card>
       )}

@@ -118,6 +118,12 @@ def route(req: RouteRequest) -> dict:
     except Exception:
         syndicate_missions = None  # worldstate unavailable — proceed without filtering
 
+    def _ws(name: str):
+        try:
+            return worldstate.load_section(name, force_refresh=req.refresh)
+        except Exception:
+            return None  # live section unavailable — plan works without it
+
     result = service.plan_route(
         owned=have,
         want=want,
@@ -129,6 +135,9 @@ def route(req: RouteRequest) -> dict:
         syndicate_missions=syndicate_missions,
         squad_radiant=req.squad_radiant,
         owned_relics=owned_relics,
+        fissures=_ws("fissures"),
+        void_trader=_ws("voidTrader"),
+        invasions=_ws("invasions"),
     )
     return result.to_dict()
 

@@ -6,23 +6,50 @@ that only appear in event bounties (Ghoul Purge, Plague Star, …) when the even
 is not running — so the router doesn't send players to a bounty that doesn't
 exist today.
 
-TTL is 15 minutes: open-world bounties rotate every 2.5–3 hours, so this is a
-reasonable balance between accuracy and network calls.
+Further sections consumed via :func:`load_section`:
+
+* ``fissures`` — which void-fissure tiers are open *right now* and where, so the
+  Prime plan can say "a Lith Capture is live at Adaro" instead of only "farm a
+  Lith fissure";
+* ``voidTrader`` — Baro Ki'Teer's current stock, cross-referenced against
+  needed no-mission-source gear;
+* ``invasions`` — running invasions whose rewards (Wraith/Vandal parts, …)
+  match needed items.
+
+TTL is 15 minutes: open-world bounties rotate every 2.5–3 hours and fissures
+every few minutes-to-hours, so this is a reasonable accuracy/traffic balance.
 """
 
 from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timezone
 
 import requests
 
 from .data import CACHE_DIR
 from .items import normalize
 
-SYNDICATE_MISSIONS_URL = "https://api.warframestat.us/pc/syndicateMissions"
+WORLDSTATE_BASE = "https://api.warframestat.us/pc/"
+SYNDICATE_MISSIONS_URL = WORLDSTATE_BASE + "syndicateMissions"
 _CACHE_FILE = CACHE_DIR / "syndicateMissions.json"
 _TTL = 15 * 60  # seconds
+
+
+def load_section(name: str, force_refresh: bool = False):
+    """Fetch one worldstate section (``fissures``, ``voidTrader``,
+    ``invasions``, …), cached for 15 minutes per section."""
+    cache_file = CACHE_DIR / f"ws_{name}.json"
+    if not force_refresh and cache_file.exists():
+        if time.time() - cache_file.stat().st_mtime < _TTL:
+            return json.loads(cache_file.read_text(encoding="utf-8"))
+    resp = requests.get(WORLDSTATE_BASE + name, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(json.dumps(data), encoding="utf-8")
+    return data
 
 
 def load_syndicate_missions(force_refresh: bool = False) -> list:
@@ -52,4 +79,68 @@ def active_bounty_items(missions: list) -> set[str]:
             for item in job.get("rewardPool", []):
                 if isinstance(item, str) and item:
                     result.add(normalize(item))
+    return result
+
+
+def _not_expired(iso: str | None) -> bool:
+    if not iso:
+        return True  # missing expiry — assume live rather than hide it
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")) > datetime.now(timezone.utc)
+    except ValueError:
+        return True
+
+
+def active_fissures(fissures: list) -> list[dict]:
+    """Live fissures as ``{tier, node, mission, hard, storm, expiry}`` dicts."""
+    out: list[dict] = []
+    for f in fissures or []:
+        if not isinstance(f, dict) or not _not_expired(f.get("expiry")):
+            continue
+        tier = f.get("tier")
+        if not tier:
+            continue
+        out.append({
+            "tier": tier,
+            "node": f.get("node", "?"),
+            "mission": f.get("missionType", "?"),
+            "hard": bool(f.get("isHard")),
+            "storm": bool(f.get("isStorm")),
+            "expiry": f.get("expiry"),
+        })
+    return out
+
+
+def baro_stock(trader: dict) -> dict | None:
+    """Baro's live inventory as ``{location, until, items: {norm: display}}``,
+    or None when he isn't currently trading (inventory is empty between visits)."""
+    if not isinstance(trader, dict):
+        return None
+    inv = trader.get("inventory") or []
+    stock = {normalize(e["item"]): e["item"]
+             for e in inv if isinstance(e, dict) and e.get("item")}
+    if not stock or not _not_expired(trader.get("expiry")):
+        return None
+    return {"location": trader.get("location", "?"),
+            "until": trader.get("expiry"), "items": stock}
+
+
+def invasion_rewards(invasions: list) -> dict[str, set[str]]:
+    """Normalized reward item → {invasion descriptions} for running invasions."""
+    result: dict[str, set[str]] = {}
+    for inv in invasions or []:
+        if not isinstance(inv, dict) or inv.get("completed"):
+            continue
+        node = inv.get("node", "?")
+        for side in ("attacker", "defender"):
+            reward = (inv.get(side) or {}).get("reward") or {}
+            names = list(reward.get("items") or [])
+            names += [c.get("type") or c.get("key", "")
+                      for c in reward.get("countedItems") or []
+                      if isinstance(c, dict)]
+            faction = (inv.get(side) or {}).get("faction", "")
+            desc = f"Invasion — {node} (side with {faction})" if faction else f"Invasion — {node}"
+            for n in names:
+                if n:
+                    result.setdefault(normalize(n), set()).add(desc)
     return result
