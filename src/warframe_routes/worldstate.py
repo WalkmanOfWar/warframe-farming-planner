@@ -94,6 +94,14 @@ def _not_expired(iso: str | None) -> bool:
         return True
 
 
+# The live worldstate feed (/pc/fissures) and the drop-table feed
+# (missionRewards.json, what effort.MODE_MINUTES was built against) name the
+# same mode differently for at least this one case — normalize on read so
+# every downstream consumer (mode_minutes, rotation_factor, ...) sees the
+# canonical missionRewards.json spelling regardless of which feed it came from.
+_MISSION_TYPE_ALIASES = {"Extermination": "Exterminate"}
+
+
 def active_fissures(fissures: list) -> list[dict]:
     """Live fissures as ``{tier, node, mission, hard, storm, expiry}`` dicts."""
     out: list[dict] = []
@@ -103,10 +111,11 @@ def active_fissures(fissures: list) -> list[dict]:
         tier = f.get("tier")
         if not tier:
             continue
+        mission = f.get("missionType", "?")
         out.append({
             "tier": tier,
             "node": f.get("node", "?"),
-            "mission": f.get("missionType", "?"),
+            "mission": _MISSION_TYPE_ALIASES.get(mission, mission),
             "hard": bool(f.get("isHard")),
             "storm": bool(f.get("isStorm")),
             "expiry": f.get("expiry"),

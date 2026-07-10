@@ -434,8 +434,16 @@ def plan_route(
         for f in live:
             if f["tier"] in tiers_needed:
                 by_tier.setdefault(f["tier"], []).append(f)
-        for lst in by_tier.values():  # normal missions first, storms/SP last
-            lst.sort(key=lambda f: (f["storm"], f["hard"], f["node"]))
+        # Not every live fissure is worth the same trip: cracking is a rush-in,
+        # grab-reactant-fast job, so Capture/Exterminate (~1.5-3 min/crack) beat
+        # Disruption/Excavation (~4 min), which beat Defense/Interception/
+        # Skirmish (~5-6 min) — reuse effort.MODE_MINUTES (already the
+        # calibrated per-mode time) rather than a second hardcoded ranking.
+        # Only the fastest 3 per tier are ever displayed, so this ordering IS
+        # the recommendation: a slow mode only surfaces when nothing faster is
+        # currently live for that tier, never displacing a faster live option.
+        for lst in by_tier.values():  # fastest crack first; normal before storms/SP
+            lst.sort(key=lambda f: (f["storm"], f["hard"], effort.mode_minutes(f["mission"]), f["node"]))
         result.active_fissures = dict(sorted(by_tier.items()))
 
         # Double-dip: a route node that is an open fissure right now farms the
