@@ -82,6 +82,38 @@ def normalize(name: str) -> str:
     return (name or "").strip().casefold()
 
 
+# A component counts as a farmable "part" (as opposed to a generic stackable
+# resource like Cryotic/Neurodes/Orokin Cell) if its uniqueName matches one of
+# these path markers. /Recipes/ covers ordinary Foundry blueprints; the second
+# marker covers Necramech vault parts (Voidrig/Bonewidow/Morgha/Cortege) —
+# one-per-item components exactly like a Chassis/Systems, but WFCD names them
+# under /InfestedMicroplanet/Resources/Mechs/ since they're won from Isolation
+# Vault runs rather than built in the Foundry from a bought blueprint. Without
+# this they're indistinguishable from a generic resource and silently vanish
+# from both the acquisition chain and owned-parts matching.
+PART_PATH_MARKERS = ("/Recipes/", "/InfestedMicroplanet/Resources/Mechs/")
+
+
+def is_part_component(uniq: str) -> bool:
+    return any(marker in (uniq or "") for marker in PART_PATH_MARKERS)
+
+
+def part_display_name(equip_name: str, comp_name: str) -> str:
+    """Fallback display name for a part with no drop-table ``type`` string.
+
+    Normally ``"<Equipment> <Component>"`` (e.g. "Volt Prime" + "Chassis" ->
+    "Volt Prime Chassis"). Necramech vault-part components are a WFCD-dataset
+    exception: their own ``name`` already includes the equipment name (e.g.
+    "Voidrig Capsule", not "Capsule"), so blindly prefixing it again would
+    produce "Voidrig Voidrig Capsule" — detect and skip the duplicate prefix.
+    """
+    comp_name = (comp_name or "").strip()
+    equip_name = (equip_name or "").strip()
+    if comp_name.casefold().startswith(equip_name.casefold()):
+        return comp_name
+    return f"{equip_name} {comp_name}".strip()
+
+
 def _cache_is_fresh() -> bool:
     if not CACHE_FILE.exists():
         return False

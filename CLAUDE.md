@@ -83,11 +83,22 @@ The pipeline is a staged flow, one module per stage under `src/warframe_routes/`
    - **Non-Prime parts** (`drop.location` parses to a node) → `direct_nodes` /
      `direct_parts`, a genuine fewest-missions **set-cover** fed to `optimize_route`.
 
-   A component counts as a **part** only if its `uniqueName` contains `/Recipes/`;
-   this filters out raw resources (Cryotic, Salvage, Neurodes, Orokin Cell, …) that
-   also have drop locations. Equipment that yields no farmable part (market/clan/
-   syndicate/lich/Baro/quest) is reported in `no_mission_source`. **Only the
-   non-Prime side uses `optimize.py`**; the Prime side is a per-part relic listing.
+   A component counts as a **part** iff `items.is_part_component(uniqueName)` —
+   `/Recipes/` (filters out raw resources: Cryotic, Salvage, Neurodes, Orokin
+   Cell, …) **or** `/InfestedMicroplanet/Resources/Mechs/` (Necramech vault
+   parts — Voidrig/Bonewidow/Morgha/Cortege — which WFCD names outside
+   `/Recipes/` even though they're one-per-item components exactly like a
+   Chassis; no drop table lists Isolation Vault rewards, so without this
+   marker they silently vanished from the plan instead of surfacing as
+   "no known source", which `service.plan_route` now relabels into
+   `special_source` — same mechanism as the Duviri-detection below).
+   `items.part_display_name(equip, comp)` builds the fallback display name
+   and skips re-prefixing when the component's own name already embeds the
+   equipment name (a WFCD quirk specific to Necramech parts: `comp.name` is
+   `"Voidrig Capsule"`, not `"Capsule"` — blindly prefixing would double it).
+   Equipment that yields no farmable part (market/clan/syndicate/lich/Baro/
+   quest) is reported in `no_mission_source`. **Only the non-Prime side uses
+   `optimize.py`**; the Prime side is a per-part relic listing.
 
    **`private_inventory.py`** — the full inventory the public profile can't expose.
    `run_helper(path)` shells out to warframe-api-helper (game must be running) and
@@ -155,6 +166,16 @@ casefold()`); `inventory.py` and `optimize.py` import it as `_normalize`, and
 `acquisition`/`service` use `items.normalize` directly. Change it in one place.
 In `optimize.py`, "needed" names are already normalized; `Node.items` are
 normalized on comparison (so feeding already-normalized part names is idempotent).
+
+### Cross-cutting invariant: what counts as a farmable "part"
+
+**`items.is_part_component`/`items.part_display_name` are the single source
+of truth** for "is this component a farmable part" and "what do I call it
+when the drop table gives no display string" — `acquisition.py` and
+`private_inventory.py` both import and use them directly (never re-implement
+the `/Recipes/` check locally). Any future equipment category whose WFCD
+component naming doesn't follow the `/Recipes/` convention (like Necramech
+vault parts) should extend `PART_PATH_MARKERS`, not add a parallel check.
 
 ## Conventions
 

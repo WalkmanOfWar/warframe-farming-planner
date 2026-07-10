@@ -14,7 +14,11 @@ Two very different farming models, because the game works differently:
 
 Availability is decided by the live mission drop tables: a relic is in rotation
 iff it currently appears as a mission reward. A component counts as a farmable
-part only if its `uniqueName` is under `/Recipes/` (filters out raw resources).
+part only if `items.is_part_component` says so (`/Recipes/`, or a Necramech
+vault part — see that function's docstring for why the latter needs its own
+marker: no drop table lists Isolation Vault rewards, so without this a needed
+Necramech part silently vanishes from the plan rather than being surfaced as
+"no known source", which is what :mod:`service` does for it).
 """
 
 from __future__ import annotations
@@ -24,7 +28,8 @@ from dataclasses import dataclass, field
 
 from . import effort
 from .data import Node
-from .items import base_relic_name, normalize, parse_location, relic_refinement
+from .items import (base_relic_name, is_part_component, normalize,
+                     part_display_name, parse_location, relic_refinement)
 
 
 @dataclass
@@ -118,13 +123,14 @@ def build_plan(
             continue
         equip_name = it["name"]
         for comp in it.get("components") or []:
-            # Real buildable parts live under /Recipes/; a component drop pointing
+            # Real buildable parts live under /Recipes/ (or are Necramech vault
+            # parts, see items.is_part_component); a component drop pointing
             # anywhere else (Cryotic, Neurodes, Salvage, ...) is a raw resource.
-            if "/Recipes/" not in (comp.get("uniqueName") or ""):
+            if not is_part_component(comp.get("uniqueName") or ""):
                 continue
             for drop in comp.get("drops") or []:
                 loc = (drop or {}).get("location", "")
-                disp = drop.get("type") or f"{equip_name} {comp.get('name', '')}".strip()
+                disp = drop.get("type") or part_display_name(equip_name, comp.get("name", ""))
                 pnorm = normalize(disp)
                 chance = (drop or {}).get("chance") or 0.0
                 if "Relic" in loc:
@@ -187,12 +193,12 @@ def build_plan(
             continue
         equip_name = it["name"]
         for comp in it.get("components") or []:
-            if "/Recipes/" not in (comp.get("uniqueName") or ""):
+            if not is_part_component(comp.get("uniqueName") or ""):
                 continue
             drops = comp.get("drops") or []
             disp = (
                 next((d.get("type") for d in drops if d.get("type")), None)
-                or f"{equip_name} {comp.get('name', '')}".strip()
+                or part_display_name(equip_name, comp.get("name", ""))
             )
             pnorm = normalize(disp)
             if pnorm not in routed_parts:
