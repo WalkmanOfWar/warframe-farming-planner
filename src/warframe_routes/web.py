@@ -48,6 +48,21 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/api/fissures")
+def fissures(refresh: bool = False) -> dict:
+    """Live void fissures for the frontend's auto-refreshing overlay.
+
+    Returns ``{"fissures": [...]}`` (see ``worldstate.active_fissures``) or
+    ``{"fissures": null}`` when the worldstate is unreachable — the UI keeps
+    whatever it last had.
+    """
+    try:
+        raw = worldstate.load_section("fissures", force_refresh=refresh)
+    except Exception:
+        return {"fissures": None}
+    return {"fissures": worldstate.active_fissures(raw)}
+
+
 @app.get("/api/items")
 def search_items(q: str = "", limit: int = 10) -> dict:
     """Autocomplete for the wishlist: masterable item names matching ``q``.

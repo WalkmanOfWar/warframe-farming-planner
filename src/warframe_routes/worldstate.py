@@ -111,6 +111,23 @@ def active_fissures(fissures: list) -> list[dict]:
     return out
 
 
+def fissure_node_tiers(fissures_live: list[dict]) -> dict[str, str]:
+    """Map ``"planet|node"`` (casefolded) → fissure tier for live non-storm
+    fissures, so plan nodes can be matched against currently-open fissures.
+
+    Worldstate names nodes ``"Adaro (Sedna)"``; the plan uses ``"Sedna - Adaro"``.
+    """
+    idx: dict[str, str] = {}
+    for f in fissures_live:
+        if f.get("storm"):
+            continue  # Railjack void storms aren't the same node
+        node = f.get("node", "")
+        if "(" in node and node.endswith(")"):
+            name, planet = node[:-1].rsplit("(", 1)
+            idx[f"{planet.strip()}|{name.strip()}".casefold()] = f["tier"]
+    return idx
+
+
 def baro_stock(trader: dict) -> dict | None:
     """Baro's live inventory as ``{location, until, items: {norm: display}}``,
     or None when he isn't currently trading (inventory is empty between visits)."""
