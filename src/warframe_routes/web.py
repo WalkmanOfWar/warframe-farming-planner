@@ -48,6 +48,29 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/api/items")
+def search_items(q: str = "", limit: int = 10) -> dict:
+    """Autocomplete for the wishlist: masterable item names matching ``q``.
+
+    Prefix matches rank before substring matches so "vol" suggests "Volt"
+    ahead of "Frostbite Volt". Case-insensitive; empty query returns nothing.
+    """
+    query = q.strip().casefold()
+    if not query:
+        return {"items": []}
+    items_data = items.load_items()
+    names = catalog.all_targets(items_data)
+    prefix, substring = [], []
+    for name in names:
+        folded = name.casefold()
+        if folded.startswith(query):
+            prefix.append(name)
+        elif query in folded:
+            substring.append(name)
+    ranked = sorted(prefix) + sorted(substring)
+    return {"items": ranked[: max(1, min(limit, 50))]}
+
+
 @app.post("/api/route")
 def route(req: RouteRequest) -> dict:
     items_data = items.load_items(force_refresh=req.refresh)
