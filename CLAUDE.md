@@ -175,13 +175,21 @@ Both the **Prime relic chain and the non-Prime direct chain are built**
    plus it handles the password and is grayer on ToS. A future no-touch option could
    read the live game's session token like warframe-api-helper does (OS-specific).
 
-3. **Non-Prime is effort-optimized; Prime is per-part, not joint.** The non-Prime
-   route now minimizes expected **time** (`optimize_by_cost`), picking the best
-   node when a part drops at several. Prime still chooses each part's *cheapest
-   relic independently* — it does **not** jointly optimize relics that share
-   multiple needed parts (one crack can yield several), nor model 4× shared-radiant
-   cracking (cracking is solo, one relic per fissure). Those are the remaining
-   optimization steps. Time uses rough per-mode estimates (`effort.MODE_MINUTES`).
+2. **Both chains are effort-optimized and joint.** Non-Prime minimizes expected
+   **time** (`optimize_by_cost`), picking the best node when a part drops at
+   several. Prime is **jointly** optimized over relics (`service._prime_relic_plan`
+   reuses `optimize_by_cost`: a relic sharing several needed parts is cracked once
+   for all of them), and 4× shared-radiant squad cracking is modelled via
+   `effort.effective_squad_chance_pct` (`squad_radiant` flag through
+   `plan_route`/the web UI). Time still uses rough per-mode estimates
+   (`effort.MODE_MINUTES`) — the remaining judgement knob.
+
+3. **Live worldstate is consulted; Nightwave isn't.** `worldstate.py` filters
+   event-only bounty drops against live `syndicateMissions` (15-min cache,
+   graceful fallback when offline). Duviri Circuit gear is detected via
+   `/Gameplay/Duviri/` component uniqueNames. Nightwave cred-shop items are
+   *not* labelled — the WFCD `/pc/nightwave` endpoint exposes challenges, not
+   the rotating cred-shop stock, so there is no data source yet.
 
 The modular pipeline is structured so each can be added without disturbing the
 others; `optimize.py` stays objective-agnostic.
