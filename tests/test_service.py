@@ -412,3 +412,32 @@ def test_active_fissures_prefer_fast_crack_modes_over_alphabetical_node():
     live = res.active_fissures["Axi"]
     assert live[0]["mission"] == "Capture"
     assert live[0]["node"] == "Zzz Node (Mars)"
+
+
+def test_build_resource_needs_sums_across_equipment_gross():
+    blueprints = {
+        "Rhino": {"Parts": [{"Count": 2, "Name": "Neurodes", "Type": "Resource"}]},
+        "Volt Prime": {"Parts": [{"Count": 2, "Name": "Neurodes", "Type": "Resource"},
+                                 {"Count": 1, "Name": "Orokin Cell", "Type": "Resource"}]},
+    }
+    out = service.build_resource_needs(["Rhino", "Volt Prime"], blueprints)
+    by_res = {r.resource: r for r in out}
+    assert by_res["Neurodes"].need == 4
+    assert by_res["Neurodes"].owned is None and by_res["Neurodes"].short_by is None
+    assert by_res["Orokin Cell"].need == 1
+
+
+def test_build_resource_needs_computes_shortfall_against_owned():
+    blueprints = {"Rhino": {"Parts": [{"Count": 5, "Name": "Neurodes", "Type": "Resource"}]}}
+    out = service.build_resource_needs(["Rhino"], blueprints, owned_resources={"Neurodes": 2})
+    assert out[0].need == 5 and out[0].owned == 2 and out[0].short_by == 3
+
+
+def test_build_resource_needs_shortfall_floors_at_zero_when_overstocked():
+    blueprints = {"Rhino": {"Parts": [{"Count": 5, "Name": "Neurodes", "Type": "Resource"}]}}
+    out = service.build_resource_needs(["Rhino"], blueprints, owned_resources={"Neurodes": 999})
+    assert out[0].short_by == 0
+
+
+def test_build_resource_needs_skips_unmatched_equipment():
+    assert service.build_resource_needs(["Totally Unknown Item"], {}) == []

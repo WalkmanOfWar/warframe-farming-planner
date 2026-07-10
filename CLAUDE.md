@@ -292,5 +292,42 @@ Both the **Prime relic chain and the non-Prime direct chain are built**
    Also pure/no I/O; called from `cli.py`/`web.py` right alongside
    `fetch_prices()`, same reasoning as `select_price_candidates`.
 
+5. **`blueprint_costs.py`** — raw crafting-resource totals (Orokin Cell,
+   Ferrite, Neurodes, …) for everything still missing, from a data source
+   **completely separate** from the rest of this tool: the Warframe Wiki's
+   `Module:Blueprints/data`, not WFCD/warframestat. Verified live against
+   Rhino/Chroma/Ash Prime/Braton that WFCD's `/items` and `/warframes/{item}`
+   never carry more than an incidental one-off resource, and confirmed via
+   [WFCD/warframe-items#276](https://github.com/WFCD/warframe-items/issues/276)
+   (closed "not planned") that this is a permanent upstream gap, not a
+   field-selection fix. The wiki module *does* have full recipes, but only as
+   raw Lua table source (`?action=raw`, no JSON API, no stability contract)
+   — the most fragile integration in this codebase; `_parse_lua_table` is a
+   small hand-rolled tokenizer/parser for this data-only Lua dialect (tables,
+   strings, numbers, `true`/`false`/`nil`, `--` comments — no expressions to
+   evaluate, so a full Lua interpreter dependency isn't needed). A parse or
+   fetch failure degrades to an empty dict, never a crash or a guess.
+
+   Two real parsing traps, found by diffing raw top-level key counts against
+   what actually parsed: (1) the module has multiple top-level categories
+   (`Blueprints` for weapons, `Suits` for Warframes/Necramechs, possibly more)
+   that must be merged, not just read from one hardcoded key; (2) weapon
+   sub-parts (Barrel/Receiver/Stock) usually carry an embedded `Cost` block
+   (self-contained recipe) but Warframe sub-parts (Chassis/Neuroptics/
+   Systems) don't — instead each is its *own* top-level entry named
+   `"<Frame> <Part>"`, and Prime frames need word-overlap dedup on top of that
+   (`"Ash Prime"` + `"Prime Chassis"` → `"Ash Prime Chassis"`, not the naive
+   double-up `"Ash Prime Prime Chassis"` — see `_join_sibling_name`).
+   `expand_resource_cost()` recurses through both shapes into one flat total.
+
+   Coverage is **inherently partial** (~70% of the masterable catalog, e.g.
+   Sentinels aren't in the wiki module at all) — `service.
+   build_resource_needs()` silently omits anything unmatched rather than
+   estimating, and the UI/CLI say so explicitly. `private_inventory.
+   owned_resources()` (built from exactly the component entries `items.
+   is_part_component` already excludes as "not a part") turns the gross
+   total into an actual shortfall when a live inventory is available;
+   without one, only the gross need is shown.
+
 The modular pipeline is structured so each can be added without disturbing the
 others; `optimize.py` stays objective-agnostic.

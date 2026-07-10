@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock,
-  Copy, Crosshair, Gem, Loader2, Lock, MapPin, ShoppingBag,
+  Copy, Crosshair, Gem, Loader2, Lock, MapPin, Package, ShoppingBag,
   Swords, Upload, X, Zap,
 } from 'lucide-react'
 
@@ -1323,6 +1323,38 @@ function Results({ r }) {
           </div>
         </Card>
       )}
+
+      {r.resource_needs?.length > 0 && (() => {
+        const hasDeficit = r.resource_needs.some(x => x.short_by != null)
+        const rows = hasDeficit ? r.resource_needs.filter(x => (x.short_by ?? 0) > 0) : r.resource_needs
+        if (!rows.length) return null
+        return (
+          <CollapsibleCard icon={<Package size={15} color={C.accent} />}
+            title={hasDeficit ? "Crafting resources you're still short on" : "Crafting resources needed (totals)"}
+            count={rows.length} accentColor={C.accent}>
+            <p style={{ margin: '0 0 12px', fontSize: 13, color: C.muted }}>
+              From a separate source (Warframe Wiki) than the rest of this plan — WFCD doesn't
+              track build costs. Covers ~70% of items; anything not listed here has no known recipe data.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {rows.map(x => (
+                <div key={x.resource} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 13, color: C.text, flex: 1 }}>{x.resource}</span>
+                  {x.short_by != null ? (
+                    <span style={{ fontSize: 12, color: C.muted }}>
+                      have <b style={{ color: C.text }}>{x.owned}</b> / need <b style={{ color: C.text }}>{x.need}</b>
+                      {' — '}
+                      <span style={{ color: C.error, fontWeight: 700 }}>short {x.short_by}</span>
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 13, fontWeight: 700, color: C.accent }}>{x.need}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CollapsibleCard>
+        )
+      })()}
 
       {r.vault_trader && (
         <Card style={{ marginBottom: 16, borderColor: C.goldBorder }}>

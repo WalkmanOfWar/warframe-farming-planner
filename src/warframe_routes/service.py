@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
-from . import acquisition, effort, inventory, items, optimize, worldstate
+from . import acquisition, blueprint_costs, effort, inventory, items, optimize, worldstate
 from .data import Node
 
 # Best community spots to farm each relic tier (you farm a tier, not a relic).
@@ -95,6 +95,19 @@ class BuyVsFarm:
 
 
 @dataclass
+class ResourceNeed:
+    """Total raw crafting resources (Orokin Cell, Ferrite, Neurodes, ...)
+    needed to build every still-missing item in the plan, from a completely
+    separate data source (the Warframe Wiki's blueprint module — WFCD does
+    not track this at all; see blueprint_costs.py). ``owned``/``short_by``
+    are None when no private inventory was supplied (gross need only)."""
+    resource: str
+    need: int
+    owned: int | None = None
+    short_by: int | None = None
+
+
+@dataclass
 class RouteResult:
     missing_equipment: int
     non_prime: list[Mission] = field(default_factory=list)
@@ -153,6 +166,16 @@ class RouteResult:
     # farm (or unfarmable) first — see build_buy_vs_farm(). Populated by the
     # caller alongside market_prices, right after fetch_prices() returns.
     buy_vs_farm: list[BuyVsFarm] = field(default_factory=list)
+    # Display names of every still-missing equipment (unfiltered by whether
+    # any of its parts could be routed) — the input build_resource_needs()
+    # needs, since crafting requires every sub-part regardless of where (or
+    # whether) this tool found a farm route for it.
+    missing_equipment_names: list[str] = field(default_factory=list)
+    # Total raw crafting resources needed for every missing item, from a
+    # separate data source than the rest of this tool — see
+    # build_resource_needs(). Populated by the caller after plan_route
+    # returns, same reasoning as market_prices/buy_vs_farm.
+    resource_needs: list[ResourceNeed] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -314,9 +337,13 @@ def plan_route(
     ``daily_deals`` (Darvo) is checked for a match against anything needed.
     """
     needed_equipment = inventory.compute_needed(want, owned)
+    item_by_norm = {items.normalize(it.get("name", "")): it.get("name", "")
+                    for it in items_data if it.get("name")}
     result = RouteResult(missing_equipment=len(needed_equipment),
                          refinement=refinement,
-                         squad_radiant=squad_radiant)
+                         squad_radiant=squad_radiant,
+                         missing_equipment_names=sorted(
+                             item_by_norm[e] for e in needed_equipment if e in item_by_norm))
     if not needed_equipment:
         return result
 
@@ -734,6 +761,50 @@ def build_buy_vs_farm(result: RouteResult, prices: dict[str, dict]) -> list[BuyV
                              shared_with=shared - 1))
 
     out.sort(key=lambda b: (b.minutes is not None, -(b.minutes or 0)))
+    return out
+
+
+def build_resource_needs(
+    equipment_names: list[str],
+    blueprints: dict[str, dict],
+    owned_resources: dict[str, int] | None = None,
+) -> list[ResourceNeed]:
+    """Sum raw crafting-resource needs across every still-missing item.
+
+    Pure, no I/O — ``blueprints`` is already-fetched (blueprint_costs.
+    load_blueprints); called from cli.py/web.py after plan_route returns,
+    same reasoning as select_price_candidates/build_buy_vs_farm. An
+    equipment name with no match in ``blueprints`` (~30% of the catalog —
+    this data source's coverage is inherently partial, see blueprint_costs.py)
+    contributes nothing rather than a guess.
+
+    ``owned_resources`` (from private_inventory.owned_resources, when a live
+    inventory was supplied) computes ``short_by`` — the actual "what am I
+    missing" answer; without it, only the gross ``need`` is known and
+    ``owned``/``short_by`` stay None. Sorted by shortfall (or gross need)
+    descending, so the resource actually blocking you floats to the top.
+    """
+    totals: dict[str, int] = {}
+    for name in equipment_names:
+        key = blueprint_costs.find_blueprint_key(name, blueprints)
+        if not key:
+            continue
+        for res, cnt in blueprint_costs.expand_resource_cost(key, blueprints).items():
+            totals[res] = totals.get(res, 0) + cnt
+
+    out: list[ResourceNeed] = []
+    for res, need in totals.items():
+        if owned_resources is None:
+            out.append(ResourceNeed(resource=res, need=need))
+        else:
+            owned = owned_resources.get(res, 0)
+            out.append(ResourceNeed(resource=res, need=need, owned=owned,
+                                    short_by=max(0, need - owned)))
+
+    if owned_resources is None:
+        out.sort(key=lambda r: -r.need)
+    else:
+        out.sort(key=lambda r: (-(r.short_by or 0), -r.need))
     return out
 
 
