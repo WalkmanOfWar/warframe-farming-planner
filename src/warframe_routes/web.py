@@ -161,6 +161,7 @@ def route(req: RouteRequest) -> dict:
     try:
         candidates = service.select_price_candidates(result)
         result.market_prices = market.fetch_prices(candidates)
+        result.buy_vs_farm = service.build_buy_vs_farm(result, result.market_prices)
     except Exception:
         pass  # market prices are a bonus annotation, never required
 

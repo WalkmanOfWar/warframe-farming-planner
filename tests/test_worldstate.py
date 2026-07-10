@@ -83,3 +83,14 @@ def test_daily_deal_returns_first_unexpired():
         "item": "Detonite Injector", "discount": 20, "expiry": "2099-01-01T00:00:00.000Z"}
     assert ws.daily_deal([]) is None
     assert ws.daily_deal([{"item": "X", "expiry": "2000-01-01T00:00:00.000Z"}]) is None
+
+
+def test_active_fissures_normalizes_extermination_to_exterminate():
+    # /pc/fissures says "Extermination"; missionRewards.json (what
+    # effort.MODE_MINUTES was built against) says "Exterminate" -- without
+    # normalizing here, mode_minutes() silently falls back to the default
+    # time for every live Extermination fissure.
+    raw = [{"tier": "Lith", "node": "Mariana (Earth)", "missionType": "Extermination",
+            "isHard": False, "isStorm": False, "expiry": None}]
+    out = ws.active_fissures(raw)
+    assert out[0]["mission"] == "Exterminate"

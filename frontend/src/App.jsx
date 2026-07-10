@@ -93,7 +93,29 @@ function EffortTag({ runs, minutes, tooltip }) {
 // expensive-to-farm/unfarmable items the backend actually looked up
 // (r.market_prices); null renders nothing so this is safe to sprinkle
 // everywhere an item name appears.
-function PriceTag({ name, prices }) {
+// `deals` (from r.buy_vs_farm, keyed by item name) flags parts already judged
+// a bad farm-vs-buy trade-off (fully vaulted, or a long farm) — shown in red
+// with the time comparison baked into the label, not just a tooltip, so it's
+// impossible to miss while reading the mission/relic list itself. Anything
+// merely *priced* but not flagged still gets the quieter gold tag.
+function PriceTag({ name, prices, deals }) {
+  const deal = deals && deals[name]
+  if (deal) {
+    const timeLabel = deal.minutes == null ? 'vaulted' : `vs ~${fmtHours(deal.minutes)}`
+    return (
+      <a href={deal.url} target="_blank" rel="noopener noreferrer"
+        title={deal.minutes == null
+          ? 'Vaulted — no farm route exists. Buying (or trading/Varzia) is the only option.'
+          : `Farming this run costs ~${fmtHours(deal.minutes)}${deal.shared_with > 0 ? ` (shared with ${deal.shared_with} other needed part(s))` : ''} — click to view on warframe.market`}
+        style={{
+          fontSize: 11, fontWeight: 700, color: C.error,
+          background: C.errorFaint, border: `1px solid ${C.errorBorder}`,
+          borderRadius: 6, padding: '1px 7px', textDecoration: 'none', whiteSpace: 'nowrap',
+        }}>
+        buy ~{deal.plat}p ({timeLabel})
+      </a>
+    )
+  }
   const p = prices && prices[name]
   if (!p) return null
   return (
@@ -841,6 +863,12 @@ function missionPlanetName(node) {
 function Results({ r }) {
   const img = r.images || {}
   const liveFissures = useLiveFissures()
+  // Item name -> BuyVsFarm entry, for the stronger inline "bad trade-off" tag.
+  const dealsByItem = useMemo(() => {
+    const out = {}
+    for (const b of r.buy_vs_farm || []) out[b.item] = b
+    return out
+  }, [r.buy_vs_farm])
 
   // Recompute the live-fissure overlay whenever a fresh poll lands; falls
   // back to the plan's own snapshot (from "Plan route" time) until the first
@@ -1065,7 +1093,7 @@ function Results({ r }) {
                       {missions.map((m, i) => (
                         <div key={m.node}>
                           {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
-                          <MissionRow index={i + 1} mission={m} images={img} search={sq} prices={r.market_prices} />
+                          <MissionRow index={i + 1} mission={m} images={img} search={sq} prices={r.market_prices} deals={dealsByItem} />
                         </div>
                       ))}
                     </div>
@@ -1173,7 +1201,7 @@ function Results({ r }) {
                         <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <ItemIcon url={img[p]} name={p} size={24} />
                           <span style={{ fontSize: 13, color: C.muted }}>{p}</span>
-                          <PriceTag name={p} prices={r.market_prices} />
+                          <PriceTag name={p} prices={r.market_prices} deals={dealsByItem} />
                         </div>
                       ))}
                     </div>
@@ -1233,6 +1261,65 @@ function Results({ r }) {
                 </div>
               )
             })()}
+          </div>
+        </Card>
+      )}
+
+      {r.buy_vs_farm?.length > 0 && (
+        <Card style={{ marginBottom: 16, borderColor: C.goldBorder }}>
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <Gem size={15} color={C.gold} />
+              <span style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>
+                Buy instead of farm — worst trade-offs first
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
+              warframe.market average price vs. what farming it would actually cost.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {r.buy_vs_farm.map(b => (
+                <div key={b.item} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                }}>
+                  <ItemIcon url={img[b.item]} name={b.item} size={24} />
+                  <span style={{ fontSize: 13, color: C.text, minWidth: 0 }}>{b.item}</span>
+                  <span style={{ flex: 1 }} />
+                  {b.minutes == null ? (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, color: C.error,
+                      background: C.errorFaint, border: `1px solid ${C.errorBorder}`,
+                      borderRadius: 6, padding: '1px 7px',
+                    }}>vaulted — no farm route</span>
+                  ) : (
+                    <span style={{ fontSize: 12, color: C.muted }} title={
+                      b.shared_with > 0
+                        ? `Farming ${b.source} costs ~${fmtHours(b.minutes)}, but that run also covers ${b.shared_with} other needed part(s) — buying this alone won't remove it from your route.`
+                        : `Farming ${b.source} costs ~${fmtHours(b.minutes)} for this part alone.`
+                    }>
+                      vs ~{fmtHours(b.minutes)} farming{b.shared_with > 0 ? ` (shared×${b.shared_with + 1})` : ''}
+                    </span>
+                  )}
+                  {b.url ? (
+                    <a href={b.url} target="_blank" rel="noopener noreferrer"
+                      title={`warframe.market average price${b.tradable ? '' : ' (currently untradable)'} — click to view`}
+                      style={{
+                        fontSize: 12, fontWeight: 700, color: C.gold,
+                        background: C.goldFaint, border: `1px solid ${C.goldBorder}`,
+                        borderRadius: 6, padding: '2px 9px', textDecoration: 'none', whiteSpace: 'nowrap',
+                      }}>
+                      buy ~{b.plat}p
+                    </a>
+                  ) : (
+                    <span style={{
+                      fontSize: 12, fontWeight: 700, color: C.gold,
+                      background: C.goldFaint, border: `1px solid ${C.goldBorder}`,
+                      borderRadius: 6, padding: '2px 9px', whiteSpace: 'nowrap',
+                    }}>~{b.plat}p</span>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </Card>
       )}
@@ -1316,7 +1403,7 @@ function Results({ r }) {
       {r.vaulted_equipment.length > 0 && (
         <CollapsibleCard icon={<Lock size={15} color={C.muted} />}
           title="Vaulted / not currently farmable" count={r.vaulted_equipment.length}>
-          <ItemGrid items={r.vaulted_equipment} images={img} prices={r.market_prices} />
+          <ItemGrid items={r.vaulted_equipment} images={img} prices={r.market_prices} deals={dealsByItem} />
         </CollapsibleCard>
       )}
 
@@ -1438,7 +1525,7 @@ function Highlight({ text, query }) {
   )
 }
 
-function MissionRow({ index, mission, images = {}, search = '', prices = {} }) {
+function MissionRow({ index, mission, images = {}, search = '', prices = {}, deals = {} }) {
   const partRunEntries = Object.entries(mission.part_runs || {}).filter(([, r]) => r != null)
   const tooltip = partRunEntries.length > 1
     ? <><div style={{ fontWeight: 700, color: C.text, marginBottom: 6 }}>Per-part expected runs:</div>
@@ -1485,7 +1572,7 @@ function MissionRow({ index, mission, images = {}, search = '', prices = {} }) {
               {pr != null && (
                 <span style={{ fontSize: 11, color: C.muted, opacity: 0.7 }}>~{pr} runs</span>
               )}
-              <PriceTag name={p} prices={prices} />
+              <PriceTag name={p} prices={prices} deals={deals} />
             </div>
           )
         })}
@@ -1544,7 +1631,7 @@ function TypeLabel({ label, note }) {
   )
 }
 
-function ItemGrid({ items, images = {}, prices = {}, prerequisites = {} }) {
+function ItemGrid({ items, images = {}, prices = {}, deals = {}, prerequisites = {} }) {
   return (
     <div style={{
       display: 'grid',
@@ -1555,7 +1642,7 @@ function ItemGrid({ items, images = {}, prices = {}, prerequisites = {} }) {
         <div key={x} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <ItemIcon url={images[x]} name={x} size={24} />
           <span style={{ fontSize: 13, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x}</span>
-          <PriceTag name={x} prices={prices} />
+          <PriceTag name={x} prices={prices} deals={deals} />
           <RequiresTag name={x} prerequisites={prerequisites} />
         </div>
       ))}

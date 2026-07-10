@@ -345,3 +345,70 @@ def test_disruption_relic_uses_lower_rotation_factor_than_generic_mode():
         owned=set(), want={"volt prime"}, owned_parts=set(),
         items_data=items_data, mission_rewards=mission_rewards_survival)
     assert res_disruption.prime[0].minutes < res_survival.prime[0].minutes
+
+
+def test_buy_vs_farm_ranks_vaulted_first_then_worst_farm():
+    res = service.RouteResult(
+        missing_equipment=3,
+        vaulted_equipment=["Vaulted Prime"],
+        prime=[service.PrimeRelic(relic="Axi X1 Relic", tier="Axi",
+                                  parts=["Slow Prime Part"], minutes=500.0)],
+        non_prime=[service.Mission(node="A", game_mode="Capture",
+                                   parts=["Fast Part"], minutes=10.0)],
+    )
+    prices = {
+        "Vaulted Prime": {"plat": 80, "tradable": True, "url": "u1"},
+        "Slow Prime Part": {"plat": 15, "tradable": True, "url": "u2"},
+        "Fast Part": {"plat": 5, "tradable": True, "url": "u3"},
+    }
+    out = service.build_buy_vs_farm(res, prices)
+    assert [b.item for b in out] == ["Vaulted Prime", "Slow Prime Part", "Fast Part"]
+    assert out[0].minutes is None and out[0].source is None
+    assert out[1].minutes == 500.0 and out[1].source == "Axi X1 Relic"
+
+
+def test_buy_vs_farm_flags_shared_relic_parts():
+    res = service.RouteResult(
+        missing_equipment=1,
+        prime=[service.PrimeRelic(relic="Axi X1 Relic", tier="Axi",
+                                  parts=["Part A", "Part B"], minutes=300.0)],
+    )
+    prices = {"Part A": {"plat": 10, "tradable": True, "url": None}}
+    out = service.build_buy_vs_farm(res, prices)
+    assert out[0].shared_with == 1  # one other needed part shares this crack
+
+
+def test_buy_vs_farm_skips_unpriced_and_unknown_names():
+    res = service.RouteResult(missing_equipment=1)
+    assert service.build_buy_vs_farm(res, {"Untracked Item": {"plat": 5, "tradable": True, "url": None}}) == []
+
+
+def test_active_fissures_prefer_fast_crack_modes_over_alphabetical_node():
+    # Cracking is a rush-in job: Capture (~1.5 min) beats Defense (~5 min)
+    # regardless of node name -- a slow mode should never outrank a live fast
+    # one just because its node name sorts earlier alphabetically.
+    items_data = [{
+        "name": "Volt Prime", "masterable": True,
+        "components": [{
+            "name": "Chassis",
+            "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/VoltPrimeChassis",
+            "drops": [{"type": "Volt Prime Chassis", "chance": 11.0,
+                       "location": "Axi V8 Relic"}],
+        }],
+    }]
+    mission_rewards = {"missionRewards": {"Lua": {"Apollo": {
+        "gameMode": "Disruption",
+        "rewards": {"A": [{"itemName": "Axi V8 Relic", "chance": 10.0}]},
+    }}}}
+    fissures = [
+        {"tier": "Axi", "node": "Aaa Node (Earth)", "missionType": "Defense",
+         "isHard": False, "isStorm": False, "expiry": None},
+        {"tier": "Axi", "node": "Zzz Node (Mars)", "missionType": "Capture",
+         "isHard": False, "isStorm": False, "expiry": None},
+    ]
+    res = service.plan_route(owned=set(), want={"volt prime"}, owned_parts=set(),
+                             items_data=items_data, mission_rewards=mission_rewards,
+                             fissures=fissures)
+    live = res.active_fissures["Axi"]
+    assert live[0]["mission"] == "Capture"
+    assert live[0]["node"] == "Zzz Node (Mars)"

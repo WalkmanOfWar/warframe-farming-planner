@@ -80,6 +80,21 @@ class TierGuide:
 
 
 @dataclass
+class BuyVsFarm:
+    """One priced item paired with what farming it would actually cost, so the
+    player can judge the trade themselves — this never claims a guaranteed time
+    save, since a relic/mission's minutes cover *all* needed parts it yields,
+    not just this one (see ``shared_with``)."""
+    item: str
+    plat: int
+    tradable: bool
+    url: str | None
+    minutes: float | None   # None only for vaulted equipment (no farm route exists at all)
+    source: str | None      # the relic/node this part farms from, or None if vaulted
+    shared_with: int = 0    # other needed parts sharing that same relic/mission run
+
+
+@dataclass
 class RouteResult:
     missing_equipment: int
     non_prime: list[Mission] = field(default_factory=list)
@@ -134,6 +149,10 @@ class RouteResult:
     # {name, plat, tradable, url}. Populated by the caller (cli.py/web.py)
     # *after* plan_route returns — plan_route itself makes no network calls.
     market_prices: dict[str, dict] = field(default_factory=dict)
+    # market_prices ranked against what farming each item actually costs, worst
+    # farm (or unfarmable) first — see build_buy_vs_farm(). Populated by the
+    # caller alongside market_prices, right after fetch_prices() returns.
+    buy_vs_farm: list[BuyVsFarm] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -415,8 +434,16 @@ def plan_route(
         for f in live:
             if f["tier"] in tiers_needed:
                 by_tier.setdefault(f["tier"], []).append(f)
-        for lst in by_tier.values():  # normal missions first, storms/SP last
-            lst.sort(key=lambda f: (f["storm"], f["hard"], f["node"]))
+        # Not every live fissure is worth the same trip: cracking is a rush-in,
+        # grab-reactant-fast job, so Capture/Exterminate (~1.5-3 min/crack) beat
+        # Disruption/Excavation (~4 min), which beat Defense/Interception/
+        # Skirmish (~5-6 min) — reuse effort.MODE_MINUTES (already the
+        # calibrated per-mode time) rather than a second hardcoded ranking.
+        # Only the fastest 3 per tier are ever displayed, so this ordering IS
+        # the recommendation: a slow mode only surfaces when nothing faster is
+        # currently live for that tier, never displacing a faster live option.
+        for lst in by_tier.values():  # fastest crack first; normal before storms/SP
+            lst.sort(key=lambda f: (f["storm"], f["hard"], effort.mode_minutes(f["mission"]), f["node"]))
         result.active_fissures = dict(sorted(by_tier.items()))
 
         # Double-dip: a route node that is an open fissure right now farms the
@@ -668,6 +695,45 @@ def select_price_candidates(
         out.append(name)
         if len(out) >= max_items:
             break
+    return out
+
+
+def build_buy_vs_farm(result: RouteResult, prices: dict[str, dict]) -> list[BuyVsFarm]:
+    """Pair each priced item (from :func:`select_price_candidates` +
+    ``market.fetch_prices``) with what farming it actually costs, ranked worst
+    farm first — the practical "what's most worth buying instead" answer.
+
+    Pure, no I/O: ``prices`` is already-fetched. Vaulted equipment sorts first
+    (no farm route exists at all, buying/trading is the *only* option); the
+    rest sorts by descending relic/mission minutes. A part that shares its
+    relic/mission with other needed parts is flagged via ``shared_with`` —
+    buying it doesn't remove that run from the plan if you still need the
+    others, so the "minutes" figure is what farming that *run* costs, not a
+    guaranteed save from buying this one part.
+    """
+    part_source: dict[str, tuple[float | None, str, int]] = {}
+    for pr in result.prime:
+        for p in pr.parts:
+            part_source[p] = (pr.minutes, pr.relic, len(pr.parts))
+    for m in result.non_prime:
+        for p in m.parts:
+            part_source[p] = (m.minutes, m.node, len(m.parts))
+
+    out: list[BuyVsFarm] = []
+    for name, price in prices.items():
+        if name in result.vaulted_equipment:
+            out.append(BuyVsFarm(item=name, plat=price["plat"], tradable=price["tradable"],
+                                 url=price.get("url"), minutes=None, source=None))
+            continue
+        src = part_source.get(name)
+        if not src:
+            continue
+        minutes, source, shared = src
+        out.append(BuyVsFarm(item=name, plat=price["plat"], tradable=price["tradable"],
+                             url=price.get("url"), minutes=minutes, source=source,
+                             shared_with=shared - 1))
+
+    out.sort(key=lambda b: (b.minutes is not None, -(b.minutes or 0)))
     return out
 
 

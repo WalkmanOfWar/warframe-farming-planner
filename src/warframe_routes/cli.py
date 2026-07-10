@@ -28,6 +28,19 @@ def _price(name: str, prices: dict) -> str:
     return f"  [buy ~{p['plat']}p]" if p else ""
 
 
+def _deal(name: str, bvf_by_item: dict) -> str:
+    """Inline '  [BETTER TO BUY: ~Np, vs ~Xh farming]' — a stronger flag than
+    _price() for parts select_price_candidates already judged a bad farming
+    trade-off (fully vaulted, or >= PRICE_CHECK_MIN_MINUTES to farm); empty
+    when this part isn't in that shortlist. Falls back to _price() elsewhere."""
+    b = bvf_by_item.get(name)
+    if not b:
+        return ""
+    if b.minutes is None:
+        return f"  [BUY: ~{b.plat}p — vaulted, no farm route]"
+    return f"  [BUY: ~{b.plat}p — farming this run costs ~{_hours(b.minutes)}]"
+
+
 @click.group()
 def cli() -> None:
     """Suggest fewest-mission Warframe farming routes."""
@@ -188,12 +201,15 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     try:
         candidates = service.select_price_candidates(result)
         result.market_prices = market.fetch_prices(candidates)
+        result.buy_vs_farm = service.build_buy_vs_farm(result, result.market_prices)
     except Exception:
         pass  # market prices are a bonus annotation, never required
 
     if not result.missing_equipment:
         click.echo("Nothing to farm — you already own everything in the target set.")
         return
+
+    bvf_by_item = {b.item: b for b in result.buy_vs_farm}
 
     if result.non_prime:
         n = sum(len(m.parts) for m in result.non_prime)
@@ -208,7 +224,8 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
             for part in m.parts:
                 pr = m.part_runs.get(part)
                 tail = f"  (~{pr} runs)" if pr is not None else ""
-                click.echo(f"     - {part}{tail}{_price(part, result.market_prices)}")
+                deal = _deal(part, bvf_by_item) or _price(part, result.market_prices)
+                click.echo(f"     - {part}{tail}{deal}")
 
     if result.prime:
         click.echo(f"\nPrime — crack {len(result.prime)} relic(s) for "
@@ -223,13 +240,25 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                     if pr.farm_node_live else ("  [tier live now]" if pr.tier_live else ""))
             click.echo(f"  {pr.relic}{_effort(pr.runs, pr.minutes)}{cracks}{owned}{hint}{live}")
             for part in pr.parts:
-                click.echo(f"     - {part}{_price(part, result.market_prices)}")
+                deal = _deal(part, bvf_by_item) or _price(part, result.market_prices)
+                click.echo(f"     - {part}{deal}")
         click.echo("\n  Relic tiers to farm:")
         for t in result.tiers:
             click.echo(f"    {t.tier}: {t.where}")
             for f in result.active_fissures.get(t.tier, [])[:3]:
                 tag = " [Steel Path]" if f["hard"] else (" [Void Storm]" if f["storm"] else "")
                 click.echo(f"      LIVE: {f['node']} · {f['mission']}{tag}")
+
+    if result.buy_vs_farm:
+        click.echo(f"\nBuy instead of farm — worst trade-offs first "
+                   f"({len(result.buy_vs_farm)} item(s)):")
+        for b in result.buy_vs_farm:
+            if b.minutes is None:
+                click.echo(f"  - {b.item}  ~{b.plat}p  [vaulted — no farm route exists]")
+            else:
+                shared = f", shares a run with {b.shared_with} other part(s)" if b.shared_with else ""
+                click.echo(f"  - {b.item}  ~{b.plat}p  "
+                           f"[farming {b.source} costs ~{_hours(b.minutes)}{shared}]")
 
     if result.baro:
         click.echo(f"\nBaro Ki'Teer has {len(result.baro['items'])} item(s) you need "
@@ -266,7 +295,8 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                    f"({result.vaulted_part_count} prime part(s), "
                    f"{len(result.vaulted_equipment)} fully-vaulted item(s)):")
         for item in result.vaulted_equipment:
-            click.echo(f"  - {item}{_price(item, result.market_prices)}")
+            deal = _deal(item, bvf_by_item) or _price(item, result.market_prices)
+            click.echo(f"  - {item}{deal}")
 
     if result.event_source:
         n = sum(len(p) for p in result.event_source.values())
