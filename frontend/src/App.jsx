@@ -339,7 +339,14 @@ export default function App() {
   const isMobile = w < 520
   const [accountId, setAccountId] = useState(() => localStorage.getItem('wf_account_id') || '')
   const [nonce, setNonce] = useState(() => localStorage.getItem('wf_nonce') || '')
-  const [wishlist, setWishlist] = useState('')
+  const [wishlist, setWishlist] = useState(() => {
+    // A shared link carries the wishlist in the URL hash: #wl=<encoded text>.
+    const m = window.location.hash.match(/^#wl=(.+)$/)
+    if (m) {
+      try { return decodeURIComponent(m[1]) } catch {}
+    }
+    return ''
+  })
   const [refinement, setRefinement] = useState(() => localStorage.getItem('wf_refinement') || 'Intact')
   const [squadRadiant, setSquadRadiant] = useState(() => localStorage.getItem('wf_squad_radiant') === 'true')
   const [forceRefresh, setForceRefresh] = useState(false)
@@ -353,6 +360,42 @@ export default function App() {
   const [invName, setInvName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [suggestions, setSuggestions] = useState([])
+  const [shareCopied, setShareCopied] = useState(false)
+  const suggestTimer = useRef(null)
+
+  // Autocomplete: suggest item names for the line currently being typed.
+  function onWishlistChange(e) {
+    const text = e.target.value
+    setWishlist(text)
+    clearTimeout(suggestTimer.current)
+    const currentLine = text.slice(text.lastIndexOf('\n') + 1).trim()
+    if (currentLine.length < 2) { setSuggestions([]); return }
+    suggestTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/items?q=${encodeURIComponent(currentLine)}&limit=8`)
+        const data = await res.json()
+        // Hide the dropdown when the line is already an exact match.
+        const exact = (data.items || []).some(n => n.toLowerCase() === currentLine.toLowerCase())
+        setSuggestions(exact && data.items.length === 1 ? [] : data.items || [])
+      } catch { setSuggestions([]) }
+    }, 200)
+  }
+
+  function pickSuggestion(name) {
+    const cut = wishlist.lastIndexOf('\n') + 1
+    setWishlist(wishlist.slice(0, cut) + name + '\n')
+    setSuggestions([])
+  }
+
+  async function shareLink() {
+    const url = `${window.location.origin}${window.location.pathname}#wl=${encodeURIComponent(wishlist.trim())}`
+    try {
+      await navigator.clipboard.writeText(url)
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2000)
+    } catch {}
+  }
   const [result, setResult] = useState(() => {
     try { return JSON.parse(localStorage.getItem('wf_last_result') || 'null') } catch { return null }
   })
@@ -483,8 +526,44 @@ export default function App() {
           </Field>
 
           <Field label="Wishlist" hint="optional — one item per line; empty = everything masterable">
-            <TextArea value={wishlist} onChange={e => setWishlist(e.target.value)}
-              placeholder={'Caliban Prime\nVolt Prime\nSibear'} rows={3} />
+            <div style={{ position: 'relative' }}>
+              <TextArea value={wishlist} onChange={onWishlistChange}
+                placeholder={'Caliban Prime\nVolt Prime\nSibear'} rows={3} />
+              {suggestions.length > 0 && (
+                <div style={{
+                  position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 20,
+                  background: C.surface2, border: `1px solid ${C.accentBorder}`,
+                  borderRadius: 8, marginTop: 2, overflow: 'hidden',
+                  boxShadow: '0 6px 24px rgba(0,0,0,0.6)',
+                }}>
+                  {suggestions.map(name => (
+                    <button key={name} onClick={() => pickSuggestion(name)}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        padding: '8px 12px', fontSize: 13, color: C.text,
+                        fontFamily: 'inherit',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = C.accentFaint}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {wishlist.trim() && (
+              <button onClick={shareLink} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8,
+                background: 'transparent', border: `1px solid ${C.border}`,
+                borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600,
+                color: shareCopied ? C.success : C.muted, cursor: 'pointer',
+                fontFamily: 'inherit', transition: 'color .2s',
+              }}>
+                {shareCopied ? <CheckCircle2 size={12} /> : <Copy size={12} />}
+                {shareCopied ? 'Link copied!' : 'Copy shareable link'}
+              </button>
+            )}
           </Field>
 
           <Field label="Relic refinement" hint="for Prime effort estimate — Radiant helps rares, hurts commons">
@@ -886,6 +965,23 @@ function Results({ r }) {
                       {pr.cracks != null && (
                         <span style={{ fontSize: 12, color: C.muted }}>~{pr.cracks} cracks</span>
                       )}
+                      {pr.owned > 0 && (
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, color: C.success,
+                          background: C.successFaint, border: `1px solid ${C.successBorder}`,
+                          borderRadius: 6, padding: '1px 7px',
+                        }}>own {pr.owned}</span>
+                      )}
+                      {pr.best_refinement && (
+                        <span title={`Refining changes in-relic chances; for this relic ${pr.best_refinement} minimizes total time (traces: Exceptional 25 / Flawless 50 / Radiant 100).`}
+                          style={{
+                            fontSize: 11, fontWeight: 700, color: C.event,
+                            background: C.eventFaint, border: `1px solid ${C.eventBorder}`,
+                            borderRadius: 6, padding: '1px 7px', cursor: 'help',
+                          }}>
+                          crack as {pr.best_refinement} → ~{fmtHours(pr.best_refinement_minutes)}
+                        </span>
+                      )}
                       <span style={{ flex: 1 }} />
                       <EffortTag runs={pr.runs} minutes={pr.minutes} tooltip={relicTooltip} />
                     </div>
@@ -917,9 +1013,10 @@ function Results({ r }) {
             </div>
 
             {r.tiers.length > 0 && (() => {
-              const tierRuns = {}
+              const tierRuns = {}, tierMins = {}
               filteredPrime.forEach(pr => {
                 if (pr.runs != null) tierRuns[pr.tier] = (tierRuns[pr.tier] || 0) + pr.runs
+                if (pr.minutes != null) tierMins[pr.tier] = (tierMins[pr.tier] || 0) + pr.minutes
               })
               return (
                 <div style={{ marginTop: 20 }}>
@@ -927,14 +1024,31 @@ function Results({ r }) {
                     Relic tiers to farm
                   </div>
                   {r.tiers.map(t => (
-                    <div key={t.tier} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-                      <TierBadge tier={t.tier} />
-                      <span style={{ color: C.muted, fontSize: 14, flex: 1 }}>{t.where}</span>
-                      {tierRuns[t.tier] != null && (
-                        <span style={{ fontSize: 12, color: C.accent, fontWeight: 600 }}>
-                          ~{Math.round(tierRuns[t.tier])} runs total
-                        </span>
-                      )}
+                    <div key={t.tier} style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <TierBadge tier={t.tier} />
+                        <span style={{ color: C.muted, fontSize: 14, flex: 1 }}>{t.where}</span>
+                        {tierRuns[t.tier] != null && (
+                          <span style={{ fontSize: 12, color: C.accent, fontWeight: 600 }}>
+                            ~{Math.round(tierRuns[t.tier])} runs{tierMins[t.tier] != null ? ` · ~${fmtHours(tierMins[t.tier])}` : ''}
+                          </span>
+                        )}
+                      </div>
+                      {(r.active_fissures?.[t.tier] || []).slice(0, 3).map(f => (
+                        <div key={f.node + f.mission} style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          paddingLeft: 76, fontSize: 12, color: C.muted, marginTop: 3,
+                        }}>
+                          <span style={{
+                            width: 6, height: 6, borderRadius: '50%',
+                            background: C.success, flexShrink: 0,
+                          }} />
+                          <span style={{ color: C.success, fontWeight: 700, fontSize: 10, letterSpacing: '0.06em' }}>LIVE</span>
+                          <span>{f.node} · {f.mission}</span>
+                          {f.hard && <span style={{ color: C.event, fontSize: 10, fontWeight: 700 }}>STEEL PATH</span>}
+                          {f.storm && <span style={{ color: C.accent, fontSize: 10, fontWeight: 700 }}>VOID STORM</span>}
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -942,6 +1056,50 @@ function Results({ r }) {
             })()}
           </div>
         </Card>
+      )}
+
+      {r.baro && (
+        <Card style={{ marginBottom: 16, borderColor: C.eventBorder }}>
+          <div style={{ padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <ShoppingBag size={15} color={C.event} />
+              <span style={{ fontWeight: 700, fontSize: 15, color: C.event }}>
+                Baro Ki'Teer has {r.baro.items.length} item{r.baro.items.length !== 1 ? 's' : ''} you need
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
+              At {r.baro.location}
+              {r.baro.until ? ` · leaves ${new Date(r.baro.until).toLocaleString()}` : ''}
+            </div>
+            <ItemGrid items={r.baro.items} images={img} />
+          </div>
+        </Card>
+      )}
+
+      {r.vaulted_crackable?.length > 0 && (
+        <CollapsibleCard icon={<Gem size={15} color={C.success} />}
+          title="Vaulted parts you can still crack — you own the relic"
+          count={r.vaulted_crackable.length} accentColor={C.success}>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: C.muted }}>
+            These relics no longer drop anywhere, but copies already in your vault
+            can be cracked at any matching void fissure.
+          </p>
+          {r.vaulted_crackable.map(c => (
+            <div key={`${c.part}-${c.relic}`} style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap',
+            }}>
+              <ItemIcon url={img[c.part]} name={c.part} size={24} />
+              <span style={{ fontSize: 13, color: C.text, flex: 1, minWidth: 160 }}>{c.part}</span>
+              <span style={{ fontSize: 12, color: C.muted }}>{c.relic}</span>
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: C.success,
+                background: C.successFaint, border: `1px solid ${C.successBorder}`,
+                borderRadius: 6, padding: '1px 7px',
+              }}>own {c.owned}</span>
+              <span style={{ fontSize: 11, color: C.accent }}>{c.chance}% / crack</span>
+            </div>
+          ))}
+        </CollapsibleCard>
       )}
 
       {r.vaulted_equipment.length > 0 && (

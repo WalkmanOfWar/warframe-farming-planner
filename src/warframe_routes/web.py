@@ -48,6 +48,29 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/api/items")
+def search_items(q: str = "", limit: int = 10) -> dict:
+    """Autocomplete for the wishlist: masterable item names matching ``q``.
+
+    Prefix matches rank before substring matches so "vol" suggests "Volt"
+    ahead of "Frostbite Volt". Case-insensitive; empty query returns nothing.
+    """
+    query = q.strip().casefold()
+    if not query:
+        return {"items": []}
+    items_data = items.load_items()
+    names = catalog.all_targets(items_data)
+    prefix, substring = [], []
+    for name in names:
+        folded = name.casefold()
+        if folded.startswith(query):
+            prefix.append(name)
+        elif query in folded:
+            substring.append(name)
+    ranked = sorted(prefix) + sorted(substring)
+    return {"items": ranked[: max(1, min(limit, 50))]}
+
+
 @app.post("/api/route")
 def route(req: RouteRequest) -> dict:
     items_data = items.load_items(force_refresh=req.refresh)
@@ -63,6 +86,7 @@ def route(req: RouteRequest) -> dict:
 
     have: set[str] = set()
     owned_parts: set[str] = set()
+    owned_relics: dict[str, int] = {}
     if inv is not None:
         types = private_inventory.collect_item_types(inv)
         have |= _norm(sync.resolve_names(types, items_data))
@@ -71,6 +95,7 @@ def route(req: RouteRequest) -> dict:
         pending_equip, pending_parts = private_inventory.pending_owned(inv, items_data)
         have |= pending_equip
         owned_parts |= _norm(pending_parts)
+        owned_relics = private_inventory.owned_relics(inv, items_data)
     if req.account_id and not inv_is_full:
         try:
             have |= _norm(sync.fetch_owned(req.account_id))
@@ -93,6 +118,12 @@ def route(req: RouteRequest) -> dict:
     except Exception:
         syndicate_missions = None  # worldstate unavailable — proceed without filtering
 
+    def _ws(name: str):
+        try:
+            return worldstate.load_section(name, force_refresh=req.refresh)
+        except Exception:
+            return None  # live section unavailable — plan works without it
+
     result = service.plan_route(
         owned=have,
         want=want,
@@ -103,6 +134,10 @@ def route(req: RouteRequest) -> dict:
         transient_rewards=data.load_transient_raw(force_refresh=req.refresh),
         syndicate_missions=syndicate_missions,
         squad_radiant=req.squad_radiant,
+        owned_relics=owned_relics,
+        fissures=_ws("fissures"),
+        void_trader=_ws("voidTrader"),
+        invasions=_ws("invasions"),
     )
     return result.to_dict()
 

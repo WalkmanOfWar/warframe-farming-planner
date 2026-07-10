@@ -67,3 +67,32 @@ def test_fetch_inventory_returns_json():
                   json={"MiscItems": [{"ItemType": "X", "ItemCount": 1}]})
     assert pi.fetch_inventory("a" * 24, "n") == {
         "MiscItems": [{"ItemType": "X", "ItemCount": 1}]}
+
+
+RELIC_ITEMS = [
+    {"name": "Axi A1 Intact",
+     "uniqueName": "/Lotus/Types/Game/Projections/T4VoidProjectionEBronze"},
+    {"name": "Axi A1 Radiant",
+     "uniqueName": "/Lotus/Types/Game/Projections/T4VoidProjectionEPlatinum"},
+    {"name": "Lith W3 Intact",
+     "uniqueName": "/Lotus/Types/Game/Projections/T1VoidProjectionWBronze"},
+]
+
+
+def test_owned_relics_sums_refinements_under_base_name():
+    inv = {"MiscItems": [
+        {"ItemType": "/Lotus/Types/Game/Projections/T4VoidProjectionEBronze",
+         "ItemCount": 3},
+        {"ItemType": "/Lotus/Types/Game/Projections/T4VoidProjectionEPlatinum",
+         "ItemCount": 2},
+    ]}
+    assert pi.owned_relics(inv, RELIC_ITEMS) == {"axi a1 relic": 5}
+
+
+def test_owned_relics_ignores_zero_counts_and_unknown_types():
+    inv = {"MiscItems": [
+        {"ItemType": "/Lotus/Types/Game/Projections/T1VoidProjectionWBronze",
+         "ItemCount": 0},
+        {"ItemType": "/Lotus/Types/Items/MiscItems/OrokinCell", "ItemCount": 9},
+    ]}
+    assert pi.owned_relics(inv, RELIC_ITEMS) == {}

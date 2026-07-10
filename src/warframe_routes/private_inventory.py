@@ -133,6 +133,42 @@ def owned_parts(inventory: dict, items_data: list[dict]) -> set[str]:
     }
 
 
+_REFINEMENTS = {"Intact", "Exceptional", "Flawless", "Radiant"}
+
+
+def owned_relics(inventory: dict, items_data: list[dict]) -> dict[str, int]:
+    """Count relics held in the inventory, keyed by normalized base relic name.
+
+    Relics live in the items dataset as void projections named
+    ``"<Tier> <Code> <Refinement>"`` (e.g. ``"Axi A1 Intact"``) with a
+    ``/Types/Game/Projections/`` uniqueName. The plan refers to relics by their
+    *base* display name (``"Axi A1 Relic"``, refinement stripped), so counts are
+    summed across refinements: any held copy can be cracked (or refined first).
+    """
+    proj_index: dict[str, str] = {}  # uniqueName -> normalized base relic name
+    for it in items_data:
+        uniq = it.get("uniqueName") or ""
+        name = it.get("name") or ""
+        if "/Types/Game/Projections/" not in uniq or not name:
+            continue
+        words = name.split()
+        if len(words) >= 2 and words[-1] in _REFINEMENTS:
+            base = " ".join(words[:-1]) + " Relic"
+            proj_index[uniq] = items.normalize(base)
+
+    counts: dict[str, int] = {}
+    for value in inventory.values():
+        if not isinstance(value, list):
+            continue
+        for entry in value:
+            if not isinstance(entry, dict):
+                continue
+            rnorm = proj_index.get(entry.get("ItemType", ""))
+            if rnorm:
+                counts[rnorm] = counts.get(rnorm, 0) + int(entry.get("ItemCount", 1) or 0)
+    return {r: n for r, n in counts.items() if n > 0}
+
+
 def pending_owned(
     inventory: dict, items_data: list[dict]
 ) -> tuple[set[str], set[str]]:
