@@ -125,6 +125,11 @@ class RouteResult:
     # Darvo's current daily deal, if it matches a needed item:
     # {item, discount, expiry}.
     daily_deal: dict | None = None
+    # warframe.market average prices for a bounded set of expensive-to-farm
+    # or unfarmable items (see select_price_candidates): display_name ->
+    # {name, plat, tradable, url}. Populated by the caller (cli.py/web.py)
+    # *after* plan_route returns — plan_route itself makes no network calls.
+    market_prices: dict[str, dict] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -590,6 +595,52 @@ def plan_route(
         result.event_source.setdefault(desc, sorted(set(its)))
 
     return result
+
+
+# Below this expected-minutes threshold, farming is assumed to still be the
+# reasonable default — only genuinely expensive items get a market lookup.
+PRICE_CHECK_MIN_MINUTES = 120.0
+# Hard cap on outbound price-check requests per plan (no bulk endpoint exists,
+# so this bounds added latency as much as it bounds request volume).
+PRICE_CHECK_MAX_ITEMS = 15
+
+
+def select_price_candidates(
+    result: RouteResult,
+    min_minutes: float = PRICE_CHECK_MIN_MINUTES,
+    max_items: int = PRICE_CHECK_MAX_ITEMS,
+) -> list[str]:
+    """Pick a bounded set of item names worth a market.fetch_prices lookup.
+
+    Two kinds of candidate, both meaning "farming this is a bad deal":
+    *fully-vaulted* equipment (there is no farm route at all — every such
+    item is included, unconditionally) and individual parts belonging to a
+    relic/mission whose *total* expected time is at or above ``min_minutes``
+    (a part is only as easy as the slowest thing sharing its crack/run).
+    Ranked by that parent time, highest first, then capped at ``max_items``
+    to bound the number of outbound requests — pure, no I/O.
+    """
+    ranked: list[tuple[float, str]] = [
+        (float("inf"), name) for name in result.vaulted_equipment
+    ]
+    for pr in result.prime:
+        if pr.minutes is not None and pr.minutes >= min_minutes:
+            ranked.extend((pr.minutes, part) for part in pr.parts)
+    for m in result.non_prime:
+        if m.minutes is not None and m.minutes >= min_minutes:
+            ranked.extend((m.minutes, part) for part in m.parts)
+    ranked.sort(key=lambda c: -c[0])
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for _, name in ranked:
+        if name in seen:
+            continue
+        seen.add(name)
+        out.append(name)
+        if len(out) >= max_items:
+            break
+    return out
 
 
 _CDN = "https://cdn.warframestat.us/img/"

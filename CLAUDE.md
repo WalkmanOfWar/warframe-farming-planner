@@ -213,5 +213,27 @@ Both the **Prime relic chain and the non-Prime direct chain are built**
    this tool's "missing gear" model regardless. `flashSales` was checked too:
    all 24 live entries are cosmetic bundles/supporter packs, no equipment.
 
+4. **`market.py`** — trade-vs-farm advice via `/pricecheck` (WFCD's proxy for
+   warframe.market). Farming isn't always the right call: some parts take
+   dozens of hours but cost a handful of platinum. `service.
+   select_price_candidates()` (pure, no I/O) picks a *bounded* set worth a
+   lookup — every fully-vaulted equipment name unconditionally, plus parts
+   whose parent relic/mission time is ≥ `PRICE_CHECK_MIN_MINUTES` (120),
+   capped at `PRICE_CHECK_MAX_ITEMS` (15) since there's no bulk price
+   endpoint. `market.fetch_prices()` then does the actual (parallelized,
+   30-min-cached) HTTP calls — called from `cli.py`/`web.py` **after**
+   `plan_route` returns, not from inside it, preserving the invariant that
+   `plan_route` itself makes no network calls (matters for testability: its
+   tests feed plain dicts, no mocking). Full equipment queries try a
+   `"<name> Set"` suffix first (the warframe.market full-blueprint-bundle
+   convention — `"Titania Prime"` alone would match a stray single part at a
+   misleadingly low price) falling back to the bare name for loose parts,
+   which are already individually tradable under their own name. This was
+   found via a full audit of WFCD's OpenAPI spec (99 endpoints) requested to
+   check for anything else worth optimizing — `/drops` (a flatter, less
+   useful re-serving of the same source data we already parse directly) and
+   `/pc/arbitration` (broken upstream right now, and Vitus Essence isn't
+   equipment anyway) were also checked and rejected.
+
 The modular pipeline is structured so each can be added without disturbing the
 others; `optimize.py` stays objective-agnostic.

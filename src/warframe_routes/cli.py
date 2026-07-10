@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import click
 
-from . import (catalog, data, inventory, items, private_inventory, service,
-               sync, worldstate)
+from . import (catalog, data, inventory, items, market, private_inventory,
+               service, sync, worldstate)
 
 
 def _hours(minutes: float) -> str:
@@ -20,6 +20,12 @@ def _effort(runs: float | None, minutes: float | None) -> str:
     if runs is None or minutes is None:
         return ""
     return f"  (~{runs} runs, ~{_hours(minutes)})"
+
+
+def _price(name: str, prices: dict) -> str:
+    """Inline '  [buy ~Np]' tag when a warframe.market price is known."""
+    p = prices.get(name)
+    return f"  [buy ~{p['plat']}p]" if p else ""
 
 
 @click.group()
@@ -179,6 +185,12 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         daily_deals=_ws("dailyDeals"),
     )
 
+    try:
+        candidates = service.select_price_candidates(result)
+        result.market_prices = market.fetch_prices(candidates)
+    except Exception:
+        pass  # market prices are a bonus annotation, never required
+
     if not result.missing_equipment:
         click.echo("Nothing to farm — you already own everything in the target set.")
         return
@@ -196,7 +208,7 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
             for part in m.parts:
                 pr = m.part_runs.get(part)
                 tail = f"  (~{pr} runs)" if pr is not None else ""
-                click.echo(f"     - {part}{tail}")
+                click.echo(f"     - {part}{tail}{_price(part, result.market_prices)}")
 
     if result.prime:
         click.echo(f"\nPrime — crack {len(result.prime)} relic(s) for "
@@ -211,7 +223,7 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                     if pr.farm_node_live else ("  [tier live now]" if pr.tier_live else ""))
             click.echo(f"  {pr.relic}{_effort(pr.runs, pr.minutes)}{cracks}{owned}{hint}{live}")
             for part in pr.parts:
-                click.echo(f"     - {part}")
+                click.echo(f"     - {part}{_price(part, result.market_prices)}")
         click.echo("\n  Relic tiers to farm:")
         for t in result.tiers:
             click.echo(f"    {t.tier}: {t.where}")
@@ -254,7 +266,7 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                    f"({result.vaulted_part_count} prime part(s), "
                    f"{len(result.vaulted_equipment)} fully-vaulted item(s)):")
         for item in result.vaulted_equipment:
-            click.echo(f"  - {item}")
+            click.echo(f"  - {item}{_price(item, result.market_prices)}")
 
     if result.event_source:
         n = sum(len(p) for p in result.event_source.values())

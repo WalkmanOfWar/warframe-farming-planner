@@ -89,6 +89,26 @@ function EffortTag({ runs, minutes, tooltip }) {
   )
 }
 
+// warframe.market average-price tag, shown only for the bounded set of
+// expensive-to-farm/unfarmable items the backend actually looked up
+// (r.market_prices); null renders nothing so this is safe to sprinkle
+// everywhere an item name appears.
+function PriceTag({ name, prices }) {
+  const p = prices && prices[name]
+  if (!p) return null
+  return (
+    <a href={p.url} target="_blank" rel="noopener noreferrer"
+      title={`warframe.market average price${p.tradable ? '' : ' (currently untradable)'} — click to view`}
+      style={{
+        fontSize: 11, fontWeight: 700, color: C.gold,
+        background: C.goldFaint, border: `1px solid ${C.goldBorder}`,
+        borderRadius: 6, padding: '1px 7px', textDecoration: 'none', whiteSpace: 'nowrap',
+      }}>
+      buy ~{p.plat}p
+    </a>
+  )
+}
+
 /* ── Primitives ───────────────────────────────────────────── */
 
 function Card({ children, accent = false, style = {} }) {
@@ -1026,7 +1046,7 @@ function Results({ r }) {
                       {missions.map((m, i) => (
                         <div key={m.node}>
                           {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
-                          <MissionRow index={i + 1} mission={m} images={img} search={sq} />
+                          <MissionRow index={i + 1} mission={m} images={img} search={sq} prices={r.market_prices} />
                         </div>
                       ))}
                     </div>
@@ -1035,7 +1055,7 @@ function Results({ r }) {
               : visibleMissions.map((m, i) => (
                   <div key={m.node}>
                     {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
-                    <MissionRow index={i + 1} mission={m} images={img} search={sq} />
+                    <MissionRow index={i + 1} mission={m} images={img} search={sq} prices={r.market_prices} />
                   </div>
                 ))
             }
@@ -1134,6 +1154,7 @@ function Results({ r }) {
                         <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <ItemIcon url={img[p]} name={p} size={24} />
                           <span style={{ fontSize: 13, color: C.muted }}>{p}</span>
+                          <PriceTag name={p} prices={r.market_prices} />
                         </div>
                       ))}
                     </div>
@@ -1276,7 +1297,7 @@ function Results({ r }) {
       {r.vaulted_equipment.length > 0 && (
         <CollapsibleCard icon={<Lock size={15} color={C.muted} />}
           title="Vaulted / not currently farmable" count={r.vaulted_equipment.length}>
-          <ItemGrid items={r.vaulted_equipment} images={img} />
+          <ItemGrid items={r.vaulted_equipment} images={img} prices={r.market_prices} />
         </CollapsibleCard>
       )}
 
@@ -1394,7 +1415,7 @@ function Highlight({ text, query }) {
   )
 }
 
-function MissionRow({ index, mission, images = {}, search = '' }) {
+function MissionRow({ index, mission, images = {}, search = '', prices = {} }) {
   const partRunEntries = Object.entries(mission.part_runs || {}).filter(([, r]) => r != null)
   const tooltip = partRunEntries.length > 1
     ? <><div style={{ fontWeight: 700, color: C.text, marginBottom: 6 }}>Per-part expected runs:</div>
@@ -1441,6 +1462,7 @@ function MissionRow({ index, mission, images = {}, search = '' }) {
               {pr != null && (
                 <span style={{ fontSize: 11, color: C.muted, opacity: 0.7 }}>~{pr} runs</span>
               )}
+              <PriceTag name={p} prices={prices} />
             </div>
           )
         })}
@@ -1499,7 +1521,7 @@ function TypeLabel({ label, note }) {
   )
 }
 
-function ItemGrid({ items, images = {} }) {
+function ItemGrid({ items, images = {}, prices = {} }) {
   return (
     <div style={{
       display: 'grid',
@@ -1507,9 +1529,10 @@ function ItemGrid({ items, images = {} }) {
       gap: '6px 16px',
     }}>
       {items.map(x => (
-        <div key={x} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div key={x} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <ItemIcon url={images[x]} name={x} size={24} />
           <span style={{ fontSize: 13, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x}</span>
+          <PriceTag name={x} prices={prices} />
         </div>
       ))}
     </div>
