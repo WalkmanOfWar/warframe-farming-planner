@@ -149,6 +149,19 @@ The pipeline is a staged flow, one module per stage under `src/warframe_routes/`
    functions; chances are **percentages**; `0`/missing ⇒ `inf` (unobtainable).
    `acquisition.build_plan` carries the chance data (`node_part_chance`,
    `part_relic_refine_chance`, `relic_source`) the model needs.
+   `rotation_factor(rotation, mode)` scales that per-rotation time for how many
+   rolls a deeper rotation actually costs: most endless modes follow the
+   documented AABC cadence (A=1st roll, B=3rd, C=4th) via `ROTATION_FACTOR`,
+   but **Disruption is a verified exception** (wiki.warframe.com/w/Disruption)
+   — tier depends on round number *and* conduits defended per round, and a
+   squad clearing all 4 conduits every round reaches B after round 1 and C
+   after round 3, not "3x"/"4x" a single roll. Using the generic table for
+   Disruption overestimated Neo/Axi relic farm time by ~30–70%, and
+   Disruption is the tool's own `RELIC_TIER_GUIDE` recommendation for those
+   tiers, so `DISRUPTION_ROTATION_FACTOR` is looked up separately whenever
+   `mode == "Disruption"`. If another mode is ever found to deviate from
+   AABC, add another mode-keyed table the same way rather than complicating
+   the single dict.
 
 5. **`service.py`** — UI-agnostic core shared by CLI and web. `plan_route()` takes
    resolved `owned`/`want`/`owned_parts` sets + datasets (+ a `refinement`) and

@@ -253,7 +253,7 @@ def build_plan(
                 if chance <= 0:
                     relic_source.setdefault(rnorm, (chance, mode, rotation, node_label))
                     continue
-                rot_factor = effort.rotation_factor(rotation)
+                rot_factor = effort.rotation_factor(rotation, mode)
                 farm_time = (100.0 / chance) * effort.mode_minutes(mode) * rot_factor
                 if farm_time < relic_best_time.get(rnorm, float("inf")):
                     relic_best_time[rnorm] = farm_time

@@ -62,14 +62,26 @@ DEFAULT_MODE_MINUTES = 4.0
 # A void-fissure crack run (typically a Capture fissure), incl. loading.
 FISSURE_MINUTES = 2.5
 
-# Endless rewards come on an A,A,B,C cadence, so a deeper rotation costs more
-# real time per reward: rotation A lands first, B on the 3rd drop, C on the 4th.
-# Multiplier on the per-rotation mode time; a non-rotational drop is 1x.
+# Most endless modes (Defense, Survival, Excavation, Interception, Mobile
+# Defense, ...) hand out rewards on an A,A,B,C cadence, so a deeper rotation
+# costs more real time per reward: A lands first, B on the 3rd drop, C on the
+# 4th. Multiplier on the per-rotation mode time; a non-rotational drop is 1x.
 ROTATION_FACTOR = {None: 1.0, "A": 1.0, "B": 3.0, "C": 4.0}
 
+# Disruption is a documented exception: it does NOT follow AABC. Reward tier
+# depends on round number *and* conduits successfully defended per round
+# (wiki.warframe.com/w/Disruption); a squad defending all 4 conduits every
+# round reaches Rotation B after round 1 and Rotation C after round 3 (not
+# after "3x"/"4x" a single roll like the generic table above would imply).
+# Using the generic factor here would overestimate Neo/Axi Disruption farm
+# time by ~30-50%, and Disruption is the tool's own recommended route for
+# those tiers (see service.RELIC_TIER_GUIDE).
+DISRUPTION_ROTATION_FACTOR = {None: 1.0, "A": 1.0, "B": 1.0, "C": 3.0}
 
-def rotation_factor(rotation: str | None) -> float:
-    return ROTATION_FACTOR.get(rotation, 1.0)
+
+def rotation_factor(rotation: str | None, mode: str | None = None) -> float:
+    table = DISRUPTION_ROTATION_FACTOR if mode == "Disruption" else ROTATION_FACTOR
+    return table.get(rotation, 1.0)
 
 # Order matters: better refinement = higher part chance but costs void traces.
 REFINEMENTS = ("Intact", "Exceptional", "Flawless", "Radiant")
