@@ -965,6 +965,13 @@ function Results({ r }) {
                       {pr.cracks != null && (
                         <span style={{ fontSize: 12, color: C.muted }}>~{pr.cracks} cracks</span>
                       )}
+                      {pr.owned > 0 && (
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, color: C.success,
+                          background: C.successFaint, border: `1px solid ${C.successBorder}`,
+                          borderRadius: 6, padding: '1px 7px',
+                        }}>own {pr.owned}</span>
+                      )}
                       <span style={{ flex: 1 }} />
                       <EffortTag runs={pr.runs} minutes={pr.minutes} tooltip={relicTooltip} />
                     </div>
@@ -1022,6 +1029,32 @@ function Results({ r }) {
             })()}
           </div>
         </Card>
+      )}
+
+      {r.vaulted_crackable?.length > 0 && (
+        <CollapsibleCard icon={<Gem size={15} color={C.success} />}
+          title="Vaulted parts you can still crack — you own the relic"
+          count={r.vaulted_crackable.length} accentColor={C.success}>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: C.muted }}>
+            These relics no longer drop anywhere, but copies already in your vault
+            can be cracked at any matching void fissure.
+          </p>
+          {r.vaulted_crackable.map(c => (
+            <div key={`${c.part}-${c.relic}`} style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap',
+            }}>
+              <ItemIcon url={img[c.part]} name={c.part} size={24} />
+              <span style={{ fontSize: 13, color: C.text, flex: 1, minWidth: 160 }}>{c.part}</span>
+              <span style={{ fontSize: 12, color: C.muted }}>{c.relic}</span>
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: C.success,
+                background: C.successFaint, border: `1px solid ${C.successBorder}`,
+                borderRadius: 6, padding: '1px 7px',
+              }}>own {c.owned}</span>
+              <span style={{ fontSize: 11, color: C.accent }}>{c.chance}% / crack</span>
+            </div>
+          ))}
+        </CollapsibleCard>
       )}
 
       {r.vaulted_equipment.length > 0 && (

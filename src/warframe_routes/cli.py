@@ -141,11 +141,13 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         want = {name.strip().casefold() for name in catalog.all_targets(items_data)}
 
     owned_parts: set[str] = set()
+    owned_relics: dict[str, int] = {}
     if inv is not None:
         owned_parts |= {n.strip().casefold()
                         for n in private_inventory.owned_parts(inv, items_data)}
         _, pending_parts = private_inventory.pending_owned(inv, items_data)
         owned_parts |= {n.strip().casefold() for n in pending_parts}
+        owned_relics = private_inventory.owned_relics(inv, items_data)
     if have_parts:
         owned_parts |= inventory.load_item_list(have_parts)
 
@@ -163,6 +165,7 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         refinement=refinement,
         transient_rewards=data.load_transient_raw(force_refresh=refresh),
         syndicate_missions=syndicate_missions,
+        owned_relics=owned_relics,
     )
 
     if not result.missing_equipment:
@@ -188,7 +191,8 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                    "(farm the relic's TIER, then crack it at a void fissure):\n")
         for pr in result.prime:
             cracks = f"  (~{pr.cracks} cracks)" if pr.cracks is not None else ""
-            click.echo(f"  {pr.relic}{_effort(pr.runs, pr.minutes)}{cracks}")
+            owned = f"  [own {pr.owned}]" if pr.owned else ""
+            click.echo(f"  {pr.relic}{_effort(pr.runs, pr.minutes)}{cracks}{owned}")
             for part in pr.parts:
                 click.echo(f"     - {part}")
         click.echo("\n  Relic tiers to farm:")
@@ -198,6 +202,13 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     if result.total_minutes:
         click.echo(f"\nEstimated total time: ~{_hours(result.total_minutes)} "
                    f"(rough; assumes {refinement} relics, solo cracking).")
+
+    if result.vaulted_crackable:
+        click.echo(f"\nVaulted parts you can still crack — you own the relic "
+                   f"({len(result.vaulted_crackable)} part(s)):")
+        for c in result.vaulted_crackable:
+            click.echo(f"  - {c['part']}  ←  {c['relic']} "
+                       f"(own {c['owned']}, {c['chance']}% per crack)")
 
     if result.vaulted_equipment:
         click.echo(f"\nVaulted / not currently farmable "

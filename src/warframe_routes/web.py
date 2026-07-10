@@ -86,6 +86,7 @@ def route(req: RouteRequest) -> dict:
 
     have: set[str] = set()
     owned_parts: set[str] = set()
+    owned_relics: dict[str, int] = {}
     if inv is not None:
         types = private_inventory.collect_item_types(inv)
         have |= _norm(sync.resolve_names(types, items_data))
@@ -94,6 +95,7 @@ def route(req: RouteRequest) -> dict:
         pending_equip, pending_parts = private_inventory.pending_owned(inv, items_data)
         have |= pending_equip
         owned_parts |= _norm(pending_parts)
+        owned_relics = private_inventory.owned_relics(inv, items_data)
     if req.account_id and not inv_is_full:
         try:
             have |= _norm(sync.fetch_owned(req.account_id))
@@ -126,6 +128,7 @@ def route(req: RouteRequest) -> dict:
         transient_rewards=data.load_transient_raw(force_refresh=req.refresh),
         syndicate_missions=syndicate_missions,
         squad_radiant=req.squad_radiant,
+        owned_relics=owned_relics,
     )
     return result.to_dict()
 

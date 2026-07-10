@@ -57,6 +57,7 @@ class PrimeRelic:
     farm_node: str | None = None   # e.g. "Void / Hepit"
     farm_mode: str | None = None   # e.g. "Capture"
     farm_chance: float | None = None  # drop chance % at that node
+    owned: int = 0                 # copies already held (credit against farming)
 
 
 @dataclass
@@ -75,6 +76,10 @@ class RouteResult:
     tiers: list[TierGuide] = field(default_factory=list)
     vaulted_equipment: list[str] = field(default_factory=list)
     vaulted_part_count: int = 0
+    # Vaulted parts rescueable from relics already in the player's inventory:
+    # {"part", "relic", "owned", "chance"} — the relic no longer drops anywhere,
+    # but held copies can still be cracked at a fissure.
+    vaulted_crackable: list[dict] = field(default_factory=list)
     no_mission_source: list[str] = field(default_factory=list)
     # Parts with /Recipes/ but no mission/relic drop (e.g. Market-only gear),
     # grouped by owning equipment: equipment display → sorted part display names.
@@ -112,7 +117,8 @@ def _mins(x: float | None) -> float | None:
 
 
 def _prime_relic_plan(plan, prime_needed: set[str], refinement: str,
-                      squad_size: int = 1):
+                      squad_size: int = 1,
+                      owned_relics: dict[str, int] | None = None):
     """Joint Prime plan: which relics to crack to get all needed Prime parts.
 
     Cracking a relic is one mutually-exclusive draw over its table — the same
@@ -125,9 +131,16 @@ def _prime_relic_plan(plan, prime_needed: set[str], refinement: str,
     With ``squad_size > 1``, chances are boosted to the effective per-run
     probability of a squad sharing results (see :func:`effort.effective_squad_chance_pct`).
 
-    Returns ``(relic_nodes_route, dchance, per_crack_time)`` helpers so the
-    caller can read effort per chosen relic.
+    ``owned_relics`` (normalized base relic name → count held in the player's
+    inventory) credits copies you already hold: each owned copy is one crack
+    that costs no farming, so a relic with enough stock in the vault costs only
+    fissure time — and the optimizer will prefer it over farming a fresh one.
+
+    Returns ``(relic_nodes_route, dchance, relic_effort)`` helpers so the
+    caller can read effort per chosen relic; ``relic_effort(rnorm, cracks)``
+    yields ``(farm_runs, minutes)`` with the owned credit applied.
     """
+    owned_relics = owned_relics or {}
     def dchance(pnorm: str, rnorm: str) -> float:
         refs = plan.part_relic_refine_chance.get(pnorm, {}).get(rnorm, {})
         raw = refs.get(refinement) or refs.get("Intact") or next(
@@ -153,22 +166,35 @@ def _prime_relic_plan(plan, prime_needed: set[str], refinement: str,
         for rn, parts in relic_items.items()
     ]
 
-    def per_crack_time(rnorm: str) -> float:
+    def _farm_minutes_per_relic(rnorm: str) -> float:
         r_chance, r_mode, r_rot, _node = plan.relic_source[rnorm]
         if r_chance <= 0:
             return float("inf")
         rot_factor = effort.rotation_factor(r_rot)
-        return (100.0 / r_chance) * effort.mode_minutes(r_mode) * rot_factor + effort.FISSURE_MINUTES
+        return (100.0 / r_chance) * effort.mode_minutes(r_mode) * rot_factor
+
+    def relic_effort(rnorm: str, cracks: float) -> tuple[float, float]:
+        """(relic-farm runs, total minutes) for ``cracks`` expected cracks,
+        crediting owned copies — each held relic is a crack with no farm cost."""
+        farm_needed = max(0.0, cracks - owned_relics.get(rnorm, 0))
+        if farm_needed <= 0:
+            return 0.0, cracks * effort.FISSURE_MINUTES
+        fm = _farm_minutes_per_relic(rnorm)
+        if fm == float("inf"):
+            return float("inf"), float("inf")
+        r_chance = plan.relic_source[rnorm][0]
+        return (farm_needed * (100.0 / r_chance),
+                farm_needed * fm + cracks * effort.FISSURE_MINUTES)
 
     def relic_cost(node, parts) -> float:
         rnorm = items.normalize(node.name)
         cracks = effort.mission_runs([dchance(p, rnorm) for p in parts])
         if cracks == float("inf"):
             return float("inf")
-        return cracks * per_crack_time(rnorm)
+        return relic_effort(rnorm, cracks)[1]
 
     route = optimize.optimize_by_cost(relic_nodes, prime_needed, relic_cost)
-    return route, dchance, per_crack_time
+    return route, dchance, relic_effort
 
 
 def _build_transient_map(transient_rewards: list) -> dict[str, set[str]]:
@@ -206,6 +232,7 @@ def plan_route(
     transient_rewards: list | None = None,
     syndicate_missions: list | None = None,
     squad_radiant: bool = False,
+    owned_relics: dict[str, int] | None = None,
 ) -> RouteResult:
     """Assemble a full route plan from normalized ownership/target sets.
 
@@ -216,6 +243,11 @@ def plan_route(
     ``squad_radiant`` models cracking in a squad of 4 sharing results: each
     fissure run yields 4 independent Radiant cracks, dramatically reducing
     expected runs for rare parts.
+
+    ``owned_relics`` (normalized base relic name → count, from the private
+    inventory) credits relics already held: they cost no farming, only the
+    fissure crack — and vaulted parts whose relic sits in the vault are
+    reported as still obtainable (``vaulted_crackable``).
     """
     needed_equipment = inventory.compute_needed(want, owned)
     result = RouteResult(missing_equipment=len(needed_equipment),
@@ -281,16 +313,17 @@ def plan_route(
     tiers_needed: set[str] = set()
     if prime_needed:
         squad_size = 4 if squad_radiant else 1
-        route, dchance, per_crack_time = _prime_relic_plan(
-            plan, prime_needed, refinement, squad_size=squad_size)
+        route, dchance, relic_effort = _prime_relic_plan(
+            plan, prime_needed, refinement, squad_size=squad_size,
+            owned_relics=owned_relics)
         relics_out: list[PrimeRelic] = []
         for step in route.steps:
             rnorm = items.normalize(step.node.name)
             cracks = effort.mission_runs(
                 [dchance(p, rnorm) for p in step.covers])
             r_chance, r_mode, _r_rot, r_node = plan.relic_source[rnorm]
-            minutes = cracks * per_crack_time(rnorm)
-            runs = cracks * (100.0 / r_chance + 1.0)  # relic-farm runs + cracks
+            farm_runs, minutes = relic_effort(rnorm, cracks)
+            runs = farm_runs + cracks  # relic-farm runs + cracks
             tier = items.relic_tier(step.node.name)
             tiers_needed.add(tier)
             relics_out.append(PrimeRelic(
@@ -298,7 +331,8 @@ def plan_route(
                 parts=sorted(disp(p) for p in step.covers),
                 cracks=_runs(cracks), runs=_runs(runs), minutes=_mins(minutes),
                 farm_node=r_node, farm_mode=r_mode,
-                farm_chance=round(r_chance, 2) if r_chance else None))
+                farm_chance=round(r_chance, 2) if r_chance else None,
+                owned=(owned_relics or {}).get(rnorm, 0)))
         # Fastest (cheapest) relics first; unobtainable last.
         relics_out.sort(key=lambda r: (r.minutes is None, r.minutes or 0))
         result.prime = relics_out
@@ -313,6 +347,26 @@ def plan_route(
     result.vaulted_equipment = sorted(plan.vaulted_equipment())
     result.vaulted_part_count = len(plan.not_farmable)
     result.no_mission_source = sorted(plan.no_mission_source)
+
+    # Vaulted parts the player can still crack: the relic no longer drops
+    # anywhere, but copies already sitting in the vault work at any fissure.
+    if owned_relics:
+        crackable: list[dict] = []
+        for pnorm in plan.not_farmable:
+            for rnorm, refs in plan.part_relic_refine_chance.get(pnorm, {}).items():
+                count = owned_relics.get(rnorm, 0)
+                if count <= 0:
+                    continue
+                chance = refs.get(refinement) or refs.get("Intact") or next(
+                    iter(refs.values()), 0.0)
+                crackable.append({
+                    "part": disp(pnorm),
+                    "relic": rnorm.title(),
+                    "owned": count,
+                    "chance": round(chance, 2),
+                })
+        result.vaulted_crackable = sorted(
+            crackable, key=lambda c: (-c["chance"], c["part"]))
 
     # Market-only parts, grouped by owning equipment (e.g. Agkuza → Blade,
     # Guard, Handle, Blueprint) so the section reads per-weapon, not as a flat

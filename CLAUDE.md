@@ -98,7 +98,11 @@ The pipeline is a staged flow, one module per stage under `src/warframe_routes/`
    each `MiscItems`/`Recipes` component `uniqueName` to the part's display name **via
    the same component `drop.type`** the chain uses, so a loose part lines up exactly
    with a needed part (subtracted in `cli.py`). Built equipment is resolved to owned
-   gear by feeding all `ItemType`s through `sync.resolve_names`. A **live** inventory
+   gear by feeding all `ItemType`s through `sync.resolve_names`. `owned_relics()`
+   counts held void projections by base relic name (refinements summed); the plan
+   credits them — an owned relic costs only the fissure crack, no farming — and
+   vaulted parts whose relic sits in the vault surface in `vaulted_crackable`.
+   A **live** inventory
    (`--helper`/`--nonce`) is authoritative and supersedes the public profile (it
    includes built-but-unmastered gear `XPInfo` misses), so `cli.py` skips public sync
    then; a saved `--inventory` file still also pulls the profile (it may be partial).
