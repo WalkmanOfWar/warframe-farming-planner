@@ -108,3 +108,35 @@ def test_nonprime_resource_component_filtered_out():
     plan = build_plan(NONPRIME, {"missionRewards": {}}, {"rhino"})
     assert not any("salvage" in p for p in plan.direct_parts)
     assert plan.prime_part_relics == {}
+
+
+NECRAMECH = [
+    {
+        "name": "Voidrig",
+        "masterable": True,
+        "components": [
+            {"name": "Blueprint",
+             "uniqueName": "/Lotus/Types/Recipes/DeimosRecipes/Mechs/NecromechBlueprint",
+             "drops": []},
+            # No drop table lists Isolation Vault rewards, and the component's
+            # own name already embeds the equipment name (a WFCD quirk) -- both
+            # must be handled without the part silently vanishing or the
+            # display name coming out "Voidrig Voidrig Capsule".
+            {"name": "Voidrig Capsule",
+             "uniqueName": "/Lotus/Types/Gameplay/InfestedMicroplanet/Resources/"
+                            "Mechs/NecromechPartSystemsItem",
+             "drops": []},
+        ],
+    }
+]
+
+
+def test_necramech_vault_part_is_not_silently_dropped():
+    plan = build_plan(NECRAMECH, {"missionRewards": {}}, {"voidrig"})
+    assert "voidrig capsule" in plan.orphan_parts
+    assert plan.orphan_parts["voidrig capsule"] == "Voidrig Capsule"  # no duplicated prefix
+
+
+def test_necramech_blueprint_also_registered_as_orphan_part():
+    plan = build_plan(NECRAMECH, {"missionRewards": {}}, {"voidrig"})
+    assert "voidrig blueprint" in plan.orphan_parts

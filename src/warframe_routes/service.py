@@ -523,6 +523,28 @@ def plan_route(
             plan.special_source_parts.setdefault(
                 items.normalize(pname), set()
             ).add(duviri_label)
+
+    # Detect Necramech vault parts the same way: no drop table lists Isolation
+    # Vault rewards (they're not standard mission rewards), so these orphan
+    # parts (Voidrig/Bonewidow/Morgha/Cortege) would otherwise sit in the
+    # generic "no known source" bucket looking Market-only, when they're
+    # actually won from a specific, farmable in-game activity.
+    necramech_equip: set[str] = set()
+    for equip_name in list(part_map.keys()):
+        it = item_idx.get(equip_name)
+        if not it:
+            continue
+        for comp in it.get("components") or []:
+            if "/InfestedMicroplanet/Resources/Mechs/" in (comp.get("uniqueName") or ""):
+                necramech_equip.add(equip_name)
+                break
+    necramech_label = "Necramech gear — Isolation Vault (Cambion Drift, Deimos); check in-game"
+    for equip_name in necramech_equip:
+        for pname in part_map.pop(equip_name, []):
+            plan.special_source_parts.setdefault(
+                items.normalize(pname), set()
+            ).add(necramech_label)
+
     result.no_part_source = {
         eq: sorted(parts) for eq, parts in sorted(part_map.items())
     }

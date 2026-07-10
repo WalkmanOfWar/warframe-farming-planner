@@ -270,3 +270,24 @@ def test_select_price_candidates_dedupes_shared_parts():
         service.PrimeRelic(relic="B", tier="Axi", parts=["Shared Part"], minutes=300.0),
     ])
     assert service.select_price_candidates(res, min_minutes=120.0) == ["Shared Part"]
+
+
+def test_necramech_vault_parts_get_relabeled_not_market_only():
+    items_data = [{
+        "name": "Voidrig",
+        "masterable": True,
+        "components": [
+            {"name": "Blueprint",
+             "uniqueName": "/Lotus/Types/Recipes/DeimosRecipes/Mechs/NecromechBlueprint",
+             "drops": []},
+            {"name": "Voidrig Capsule",
+             "uniqueName": "/Lotus/Types/Gameplay/InfestedMicroplanet/Resources/"
+                            "Mechs/NecromechPartSystemsItem",
+             "drops": []},
+        ],
+    }]
+    res = service.plan_route(owned=set(), want={"voidrig"}, owned_parts=set(),
+                             items_data=items_data, mission_rewards={"missionRewards": {}})
+    assert res.no_part_source == {}  # not left looking Market-only
+    label = "Necramech gear — Isolation Vault (Cambion Drift, Deimos); check in-game"
+    assert res.special_source[label] == ["Voidrig Blueprint", "Voidrig Capsule"]

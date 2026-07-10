@@ -114,12 +114,12 @@ def build_component_index(items_data: list[dict]) -> dict[str, str]:
     for it in items_data:
         for comp in it.get("components") or []:
             uniq = comp.get("uniqueName")
-            if not uniq or "/Recipes/" not in uniq:
+            if not uniq or not items.is_part_component(uniq):
                 continue
             disp = next(
                 (d["type"] for d in (comp.get("drops") or [])
                  if isinstance(d, dict) and d.get("type")),
-                f"{it.get('name', '')} {comp.get('name', '')}".strip(),
+                items.part_display_name(it.get("name", ""), comp.get("name", "")),
             )
             index[uniq] = disp
     return index
@@ -192,7 +192,7 @@ def pending_owned(
             drops = comp.get("drops") or []
             part_disp = next(
                 (d["type"] for d in drops if isinstance(d, dict) and d.get("type")),
-                f"{item_name} {comp.get('name', '')}".strip(),
+                items.part_display_name(item_name, comp.get("name", "")),
             )
             recipe_meta[uniq] = (item_name, comp.get("name", ""), part_disp)
 
