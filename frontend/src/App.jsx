@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock,
   Copy, Crosshair, Gem, Loader2, Lock, MapPin, ShoppingBag,
@@ -738,10 +738,111 @@ function ItemIcon({ url, name, size = 28 }) {
   )
 }
 
-/* ── Results ─────────────────────────────────────────────── */
+/* ── Live fissure auto-refresh ───────────────────────────────
+ * The plan snapshots which fissures are open at "Plan route" time. Fissures
+ * rotate every 1–3h, so a long-lived result page goes stale. This hook polls
+ * a lightweight endpoint (no full replan) and a client-side overlay recomputes
+ * just the live_fissure / tier_live / farm_node_live flags — the same matching
+ * logic as worldstate.fissure_node_tiers on the backend.
+ */
+
+const FISSURE_POLL_MS = 5 * 60 * 1000   // re-fetch from the server
+const FISSURE_TICK_MS = 60 * 1000       // re-filter expired entries locally
+
+function useLiveFissures() {
+  const [fissures, setFissures] = useState(null)
+  const [tick, setTick] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    async function poll() {
+      try {
+        const res = await fetch('/api/fissures')
+        const data = await res.json()
+        if (!cancelled && data.fissures) setFissures(data.fissures)
+      } catch { /* keep the last known snapshot on failure */ }
+    }
+    poll()
+    const id = setInterval(poll, FISSURE_POLL_MS)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
+
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), FISSURE_TICK_MS)
+    return () => clearInterval(id)
+  }, [])
+
+  return useMemo(() => {
+    if (!fissures) return null
+    const now = Date.now()
+    return fissures.filter(f => !f.expiry || new Date(f.expiry).getTime() > now)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fissures, tick])
+}
+
+// "Adaro (Sedna)" -> {name: "Adaro", planet: "Sedna"}; storms excluded (not
+// the same node concept as a regular fissure).
+function fissureNodeTiers(fissures) {
+  const idx = {}
+  for (const f of fissures) {
+    if (f.storm) continue
+    const m = /^(.*)\s\(([^)]+)\)$/.exec(f.node || '')
+    if (!m) continue
+    idx[`${m[2].trim()}|${m[1].trim()}`.toLowerCase()] = f.tier
+  }
+  return idx
+}
+
+// Plan node format: "Planet - Name" or "Planet - Name · Rot X".
+function missionPlanetName(node) {
+  const [planet, rest = ''] = node.split(' - ')
+  return { planet, name: rest.split(' · ')[0] }
+}
 
 function Results({ r }) {
   const img = r.images || {}
+  const liveFissures = useLiveFissures()
+
+  // Recompute the live-fissure overlay whenever a fresh poll lands; falls
+  // back to the plan's own snapshot (from "Plan route" time) until the first
+  // poll resolves, so the page never flashes empty.
+  const liveOverlay = useMemo(() => {
+    if (!liveFissures) return null
+    const nodeTiers = fissureNodeTiers(liveFissures)
+    const liveTiers = new Set(liveFissures.filter(f => !f.storm).map(f => f.tier))
+    const missions = {}
+    for (const m of r.non_prime) {
+      const { planet, name } = missionPlanetName(m.node)
+      missions[m.node] = nodeTiers[`${planet}|${name}`.toLowerCase()] || null
+    }
+    const relics = {}
+    for (const pr of r.prime) {
+      let farmLive = false
+      if (pr.farm_node) {
+        const [p, n] = pr.farm_node.split(' / ')
+        farmLive = nodeTiers[`${(p || '').trim()}|${(n || '').trim()}`.toLowerCase()] === pr.tier
+      }
+      relics[pr.relic] = { tier_live: liveTiers.has(pr.tier), farm_node_live: farmLive }
+    }
+    return { missions, relics }
+  }, [liveFissures, r.non_prime, r.prime])
+
+  const nonPrimeLive = useMemo(() => (
+    liveOverlay
+      ? r.non_prime.map(m => ({ ...m, live_fissure: liveOverlay.missions[m.node] ?? null }))
+      : r.non_prime
+  ), [r.non_prime, liveOverlay])
+
+  const primeLive = useMemo(() => (
+    liveOverlay
+      ? r.prime.map(pr => ({
+          ...pr,
+          tier_live: liveOverlay.relics[pr.relic]?.tier_live ?? pr.tier_live,
+          farm_node_live: liveOverlay.relics[pr.relic]?.farm_node_live ?? pr.farm_node_live,
+        }))
+      : r.prime
+  ), [r.prime, liveOverlay])
+
   const [sort, setSort] = useState('fast')
   const [groupByPlanet, setGroupByPlanet] = useState(false)
   const [search, setSearch] = useState('')
@@ -769,12 +870,12 @@ function Results({ r }) {
     )
   }
 
-  const nonPrimeParts = r.non_prime.reduce((n, m) => n + m.parts.length, 0)
+  const nonPrimeParts = nonPrimeLive.reduce((n, m) => n + m.parts.length, 0)
 
   // Sort key: "fast" = quickest missions first; "efficiency" = most parts per
   // run first (best bang for the buck). Unknown-effort missions sink to the end.
   const effOf = (m) => (m.runs ? m.parts.length / m.runs : -1)
-  const filteredNonPrime = r.non_prime.filter(matchMission)
+  const filteredNonPrime = nonPrimeLive.filter(matchMission)
   const sortedNonPrime = [...filteredNonPrime].sort((a, b) =>
     sort === 'efficiency'
       ? effOf(b) - effOf(a)
@@ -782,7 +883,7 @@ function Results({ r }) {
   const TOP_N = 10
   const visibleMissions = showAllMissions || sq ? sortedNonPrime : sortedNonPrime.slice(0, TOP_N)
 
-  const filteredPrime = r.prime.filter(matchRelic)
+  const filteredPrime = primeLive.filter(matchRelic)
   const visibleRelics = showAllRelics || sq ? filteredPrime : filteredPrime.slice(0, TOP_N)
   const totalCracks = filteredPrime.reduce((s, pr) => s + (pr.cracks || 0), 0)
 
@@ -839,12 +940,12 @@ function Results({ r }) {
       {/* Do right now — actions that are both cheapest and live at this moment */}
       {!sq && (() => {
         const now = []
-        const ownedLive = r.prime.filter(p => p.owned > 0 && p.tier_live)
+        const ownedLive = primeLive.filter(p => p.owned > 0 && p.tier_live)
         if (ownedLive.length) now.push(
           `Crack relics you already own (${ownedLive.map(p => `${p.relic} ×${p.owned}`).join(', ')}) — zero farming, their fissure tier is open now`)
-        r.prime.filter(p => p.farm_node_live).forEach(p => now.push(
+        primeLive.filter(p => p.farm_node_live).forEach(p => now.push(
           `${(p.farm_node || '').split(' / ').pop()} is a LIVE ${p.tier} fissure — farm ${p.relic} while cracking one per run`))
-        r.non_prime.filter(m => m.live_fissure).forEach(m => now.push(
+        nonPrimeLive.filter(m => m.live_fissure).forEach(m => now.push(
           `Run ${m.node} as a ${m.live_fissure} fissure — farm ${m.parts.length > 1 ? 'its parts' : m.parts[0]} and crack a relic in the same mission`))
         if (!now.length) return null
         return (
@@ -865,7 +966,7 @@ function Results({ r }) {
       })()}
 
       {/* Non-prime */}
-      {r.non_prime.length > 0 && sortedNonPrime.length > 0 && (
+      {nonPrimeLive.length > 0 && sortedNonPrime.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
@@ -873,7 +974,7 @@ function Results({ r }) {
           }}>
             <MapPin size={15} color={C.gold} />
             <span style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>
-              {`Non-Prime — ${sortedNonPrime.length}${sortedNonPrime.length < r.non_prime.length ? `/${r.non_prime.length}` : ''} mission${sortedNonPrime.length !== 1 ? 's' : ''}`}
+              {`Non-Prime — ${sortedNonPrime.length}${sortedNonPrime.length < nonPrimeLive.length ? `/${nonPrimeLive.length}` : ''} mission${sortedNonPrime.length !== 1 ? 's' : ''}`}
             </span>
             <span style={{ flex: 1 }} />
             {!isMobile && <SortToggle value={sort} onChange={setSort} options={[
@@ -966,10 +1067,10 @@ function Results({ r }) {
       )}
 
       {/* Prime */}
-      {r.prime.length > 0 && filteredPrime.length > 0 && (
+      {primeLive.length > 0 && filteredPrime.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <SectionHeader icon={<Gem size={15} color={C.gold} />}
-            title={`Prime — crack ${filteredPrime.length}${filteredPrime.length < r.prime.length ? `/${r.prime.length}` : ''} relic${filteredPrime.length !== 1 ? 's' : ''} for ${r.prime_part_count} part${r.prime_part_count !== 1 ? 's' : ''}`}
+            title={`Prime — crack ${filteredPrime.length}${filteredPrime.length < primeLive.length ? `/${primeLive.length}` : ''} relic${filteredPrime.length !== 1 ? 's' : ''} for ${r.prime_part_count} part${r.prime_part_count !== 1 ? 's' : ''}`}
             sub={`Farm each relic's tier, crack at a void fissure. Shared-part relics are cracked once.${totalCracks > 0 ? ` Total fissure runs: ~${Math.round(totalCracks)}.` : ''}${r.squad_radiant ? ' 4× squad Radiant model.' : ''}`} />
           <div style={{ padding: '0 20px 20px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
