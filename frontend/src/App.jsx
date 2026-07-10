@@ -109,6 +109,25 @@ function PriceTag({ name, prices }) {
   )
 }
 
+// "Requires: <weapon>" tag for equipment that must be built from/with
+// another whole weapon you need to already own (Akbolto needs Bolto, Dual
+// Raza needs Dual Kamas, Paracesis needs Galatine, …) — surfaced from
+// r.equipment_prerequisites since nothing else in the plan mentions it.
+function RequiresTag({ name, prerequisites }) {
+  const req = prerequisites && prerequisites[name]
+  if (!req) return null
+  return (
+    <span title={`You must already own ${req} to build ${name}`}
+      style={{
+        fontSize: 11, fontWeight: 700, color: C.accent,
+        background: C.accentFaint, border: `1px solid ${C.accentBorder}`,
+        borderRadius: 6, padding: '1px 7px', whiteSpace: 'nowrap', cursor: 'help',
+      }}>
+      requires: {req}
+    </span>
+  )
+}
+
 /* ── Primitives ───────────────────────────────────────────── */
 
 function Card({ children, accent = false, style = {} }) {
@@ -1307,7 +1326,7 @@ function Results({ r }) {
           {groupByType(r.no_mission_source, r.item_types || {}).map(([type, items]) => (
             <div key={type} style={{ marginBottom: 16 }}>
               <TypeLabel label={type} note={TYPE_NOTES[type]} />
-              <ItemGrid items={items} images={img} />
+              <ItemGrid items={items} images={img} prerequisites={r.equipment_prerequisites} />
             </div>
           ))}
         </CollapsibleCard>
@@ -1323,8 +1342,12 @@ function Results({ r }) {
               {equips.map(equip => (
                 <div key={equip} style={{ marginBottom: 12, paddingLeft: 4 }}>
                   <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
                     fontSize: 12, fontWeight: 600, color: C.gold, marginBottom: 6,
-                  }}>{equip}</div>
+                  }}>
+                    {equip}
+                    <RequiresTag name={equip} prerequisites={r.equipment_prerequisites} />
+                  </div>
                   <ItemGrid items={r.no_part_source[equip]} images={img} />
                 </div>
               ))}
@@ -1521,7 +1544,7 @@ function TypeLabel({ label, note }) {
   )
 }
 
-function ItemGrid({ items, images = {}, prices = {} }) {
+function ItemGrid({ items, images = {}, prices = {}, prerequisites = {} }) {
   return (
     <div style={{
       display: 'grid',
@@ -1533,6 +1556,7 @@ function ItemGrid({ items, images = {}, prices = {} }) {
           <ItemIcon url={images[x]} name={x} size={24} />
           <span style={{ fontSize: 13, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x}</span>
           <PriceTag name={x} prices={prices} />
+          <RequiresTag name={x} prerequisites={prerequisites} />
         </div>
       ))}
     </div>

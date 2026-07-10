@@ -291,7 +291,9 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         click.echo(f"\nNo drop source in database (Market / Duviri / Nightwave / …) "
                    f"({n} part(s)):")
         for equip, parts in result.no_part_source.items():
-            click.echo(f"  {equip}:")
+            prereq = result.equipment_prerequisites.get(equip)
+            tag = f"  [requires: {prereq}]" if prereq else ""
+            click.echo(f"  {equip}:{tag}")
             for part in parts:
                 click.echo(f"     - {part}")
 
@@ -300,7 +302,9 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
                    f"syndicate, Baro, lich/sister, standing, quest, event) "
                    f"({len(result.no_mission_source)} item(s)):")
         for item in result.no_mission_source:
-            click.echo(f"  - {item}")
+            prereq = result.equipment_prerequisites.get(item)
+            tag = f"  [requires: {prereq}]" if prereq else ""
+            click.echo(f"  - {item}{tag}")
 
 
 @cli.command()

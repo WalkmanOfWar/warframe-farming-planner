@@ -100,6 +100,18 @@ The pipeline is a staged flow, one module per stage under `src/warframe_routes/`
    quest) is reported in `no_mission_source`. **Only the non-Prime side uses
    `optimize.py`**; the Prime side is a per-part relic listing.
 
+   `build_plan` also detects **prerequisite-weapon** components: ~19 items
+   (Akbolto→Bolto, Dual Raza→Dual Kamas, Paracesis→Galatine, Zarr→Drakgoon,
+   …) have a "component" that is really a reference to a whole other
+   weapon's own `uniqueName` — you must already own that weapon to build
+   this one, and WFCD doesn't model it as a drop or a Blueprint. These never
+   affected part routing (they fail `is_part_component` and are skipped
+   before reaching any bucket), but were previously invisible; now surfaced
+   via `AcquisitionPlan.equipment_prerequisites` → `RouteResult.
+   equipment_prerequisites` (equipment display name → required weapon name),
+   rendered as a "requires: X" tag wherever that equipment appears in
+   `no_part_source`/`no_mission_source`.
+
    **`private_inventory.py`** — the full inventory the public profile can't expose.
    `run_helper(path)` shells out to warframe-api-helper (game must be running) and
    reads the `inventory.json` it writes into the cache dir; `fetch_inventory(account_id,

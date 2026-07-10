@@ -57,6 +57,14 @@ class AcquisitionPlan:
     # norm part -> norm relic -> {refinement -> in-relic chance %}
     relic_source: dict[str, tuple[float, str, str | None, str | None]] = field(default_factory=dict)
     # norm relic -> (best acquisition chance %, game mode, rotation, node display name)
+    equipment_prerequisites: dict[str, str] = field(default_factory=dict)
+    # equipment display name -> display name of another weapon you must
+    # already own to build it (Akbolto needs Bolto, Dual Raza needs Dual
+    # Kamas, Paracesis needs Galatine, ...) — a WFCD "component" that is
+    # really a reference to a whole other weapon's own uniqueName, not a
+    # drop-table part, so it's otherwise invisible: none of the acquisition
+    # logic (part routing, orphan detection) processes it, since it isn't a
+    # /Recipes/ path and has no drops of its own.
 
     def vaulted_equipment(self) -> set[str]:
         """Equipment whose every part is currently not farmable (fully vaulted)."""
@@ -117,16 +125,28 @@ def build_plan(
         part_equipment[pnorm] = equip
         equipment_with_parts.add(equip)
 
+    # Reverse index for prerequisite-weapon detection: some "components" are
+    # not a drop-table part at all but a reference to a whole other weapon's
+    # own uniqueName (Akbolto -> Bolto, Dual Raza -> Dual Kamas, Paracesis ->
+    # Galatine, ...) — you must already own that weapon to build this one.
+    uniq_to_equip = {it.get("uniqueName"): it.get("name")
+                     for it in items if it.get("masterable") and it.get("uniqueName")}
+    equipment_prerequisites: dict[str, str] = {}
+
     for equip_norm in needed_equipment:
         it = index.get(equip_norm)
         if not it:
             continue
         equip_name = it["name"]
         for comp in it.get("components") or []:
+            comp_uniq = comp.get("uniqueName") or ""
+            prereq = uniq_to_equip.get(comp_uniq)
+            if prereq and prereq != equip_name:
+                equipment_prerequisites[equip_name] = prereq
             # Real buildable parts live under /Recipes/ (or are Necramech vault
             # parts, see items.is_part_component); a component drop pointing
             # anywhere else (Cryotic, Neurodes, Salvage, ...) is a raw resource.
-            if not is_part_component(comp.get("uniqueName") or ""):
+            if not is_part_component(comp_uniq):
                 continue
             for drop in comp.get("drops") or []:
                 loc = (drop or {}).get("location", "")
@@ -288,4 +308,5 @@ def build_plan(
         node_rotation=node_rotation,
         part_relic_refine_chance=part_relic_refine_chance,
         relic_source=relic_source,
+        equipment_prerequisites=equipment_prerequisites,
     )

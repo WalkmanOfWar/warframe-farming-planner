@@ -99,6 +99,10 @@ class RouteResult:
     no_part_source: dict[str, list[str]] = field(default_factory=dict)
     # Parts from non-standard sources (Sanctuary Onslaught, Plains, …) grouped by source
     special_source: dict[str, list[str]] = field(default_factory=dict)
+    # Needed equipment that requires already owning another weapon to build
+    # (Akbolto -> Bolto, Dual Raza -> Dual Kamas, Paracesis -> Galatine, …):
+    # equipment display name -> prerequisite weapon display name.
+    equipment_prerequisites: dict[str, str] = field(default_factory=dict)
     # display_name → https://cdn.warframestat.us/img/<imageName>
     images: dict[str, str] = field(default_factory=dict)
     # display_name → WFCD type string (e.g. "Warframe", "Melee", "Rifle", …)
@@ -463,6 +467,7 @@ def plan_route(
     result.vaulted_equipment = sorted(plan.vaulted_equipment())
     result.vaulted_part_count = len(plan.not_farmable)
     result.no_mission_source = sorted(plan.no_mission_source)
+    result.equipment_prerequisites = dict(plan.equipment_prerequisites)
 
     # Vaulted parts the player can still crack: the relic no longer drops
     # anywhere, but copies already sitting in the vault work at any fissure.
