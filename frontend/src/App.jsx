@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock,
-  Copy, Crosshair, Gem, Loader2, Lock, MapPin, Package, ShoppingBag,
+  Copy, Crosshair, Gem, Loader2, Lock, MapPin, Package, RefreshCw, ShoppingBag,
   Swords, Upload, X, Zap,
 } from 'lucide-react'
 
@@ -695,6 +695,16 @@ export default function App() {
                   ? `Stored result from ${new Date(result._savedAt).toLocaleString()}`
                   : 'Route result'}
               </span>
+              <button onClick={plan} disabled={loading}
+                title="Re-fetch your inventory (Account ID/Nonce/uploaded file) and worldstate, then recompute the plan — freshly-collected parts and expired live-fissure/Baro/Darvo signals drop off automatically."
+                style={{
+                  background: 'none', border: 'none', cursor: loading ? 'default' : 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  color: loading ? C.muted : C.accent, fontSize: 12, padding: '2px 6px',
+                  opacity: loading ? 0.6 : 1,
+                }}>
+                {loading ? <SpinIcon /> : <RefreshCw size={12} />} Refresh
+              </button>
               <CopyButton result={result} />
               <button onClick={() => {
                 setResult(null)
