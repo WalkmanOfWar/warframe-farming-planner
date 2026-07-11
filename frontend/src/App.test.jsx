@@ -1,0 +1,98 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import App from './App.jsx'
+
+function jsonResponse(body, ok = true, status = ok ? 200 : 400) {
+  return Promise.resolve({
+    ok,
+    status,
+    json: () => Promise.resolve(body),
+  })
+}
+
+beforeEach(() => {
+  localStorage.clear()
+  global.fetch = vi.fn()
+})
+
+describe('App', () => {
+  it('renders the form', () => {
+    render(<App />)
+    expect(screen.getByPlaceholderText(/692f1267db467ef12005e8f7/)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Caliban Prime/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Plan route/i })).toBeInTheDocument()
+  })
+
+  it('submits the wishlist and renders the resulting missions', async () => {
+    global.fetch.mockReturnValue(jsonResponse({
+      missing_equipment: 1,
+      non_prime: [{
+        node: 'Venus - Fossa', game_mode: 'Assassination',
+        parts: ['Rhino Chassis Blueprint'], part_runs: {},
+      }],
+      non_prime_uncovered: [], prime: [], prime_part_count: 0,
+      tiers: [], vaulted_equipment: [], vaulted_part_count: 0,
+      vaulted_crackable: [], no_mission_source: [], no_part_source: {},
+      special_source: {}, equipment_prerequisites: {}, images: {}, item_types: {},
+      refinement: 'Intact', squad_radiant: false, total_minutes: 18,
+      event_source: {}, active_fissures: {}, baro: null, vault_trader: null,
+      daily_deal: null, market_prices: {}, buy_vs_farm: [],
+      missing_equipment_names: ['Rhino'], resource_needs: [], credits_needed: null,
+      partial_inventory: false,
+    }))
+
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByPlaceholderText(/Caliban Prime/), 'Rhino')
+    await user.click(screen.getByRole('button', { name: /Plan route/i }))
+
+    await waitFor(() => expect(screen.getByText('Venus - Fossa')).toBeInTheDocument())
+    expect(global.fetch).toHaveBeenCalledWith('/api/route', expect.objectContaining({
+      method: 'POST',
+    }))
+    const [, options] = global.fetch.mock.calls[0]
+    const body = JSON.parse(options.body)
+    expect(body.wishlist).toEqual(['Rhino'])
+    expect(screen.getByText('Rhino Chassis Blueprint')).toBeInTheDocument()
+    expect(screen.queryByText(/Using public profile only/)).not.toBeInTheDocument()
+  })
+
+  it('shows the server error message on a failed request', async () => {
+    global.fetch.mockReturnValue(jsonResponse(
+      { detail: 'Provide an Account ID, an inventory, or a wishlist.' }, false, 400))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: /Plan route/i }))
+
+    await waitFor(() => expect(
+      screen.getByText('Provide an Account ID, an inventory, or a wishlist.')
+    ).toBeInTheDocument())
+  })
+
+  it('shows the partial-inventory banner when the API flags it', async () => {
+    global.fetch.mockReturnValue(jsonResponse({
+      missing_equipment: 1, non_prime: [], non_prime_uncovered: [],
+      prime: [], prime_part_count: 0, tiers: [], vaulted_equipment: [],
+      vaulted_part_count: 0, vaulted_crackable: [], no_mission_source: [],
+      no_part_source: {}, special_source: {}, equipment_prerequisites: {},
+      images: {}, item_types: {}, refinement: 'Intact', squad_radiant: false,
+      total_minutes: null, event_source: {}, active_fissures: {}, baro: null,
+      vault_trader: null, daily_deal: null, market_prices: {}, buy_vs_farm: [],
+      missing_equipment_names: ['Rhino'], resource_needs: [], credits_needed: null,
+      partial_inventory: true,
+    }))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByPlaceholderText(/692f1267db467ef12005e8f7/), 'a'.repeat(24))
+    await user.click(screen.getByRole('button', { name: /Plan route/i }))
+
+    await waitFor(() => expect(
+      screen.getByText(/Using public profile only/)
+    ).toBeInTheDocument())
+  })
+})
