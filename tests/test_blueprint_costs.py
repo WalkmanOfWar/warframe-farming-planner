@@ -159,6 +159,28 @@ def test_expand_full_cost_sums_credits_across_embedded_cost():
     assert credits == 15000
 
 
+def test_expand_full_cost_falls_back_to_pname_even_when_sibling_has_credits():
+    # A sibling-named stub entry can carry a nonzero Credits with no real
+    # Parts recipe (e.g. Aklato/Lato/Lex/Sicarus in the live wiki data), while
+    # the actual resource recipe lives under the plain part name instead.
+    # The resources-empty fallback must still trigger in that case, not be
+    # suppressed just because the sibling had a credits value.
+    blueprints = {
+        "Nightfall": {
+            "Credits": 10000,
+            "Parts": [{"Count": 1, "Name": "Neuroptics", "Type": "Item"}],
+        },
+        "Nightfall Neuroptics": {"Credits": 5000, "Parts": []},
+        "Neuroptics": {
+            "Credits": 0,
+            "Parts": [{"Count": 100, "Name": "Rubedo", "Type": "Resource"}],
+        },
+    }
+    resources, credits = bc.expand_full_cost("Nightfall", blueprints)
+    assert resources == {"Rubedo": 100}
+    assert credits == 10000
+
+
 def test_expand_resource_cost_unchanged_by_credits_refactor():
     # The pre-existing public function must still return just the dict.
     blueprints = _fixture_blueprints()

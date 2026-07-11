@@ -263,7 +263,12 @@ def _expand_parts(
             else:
                 sibling = _join_sibling_name(parent_name, pname)
                 sub_totals, sub_credits = expand_full_cost(sibling, blueprints, seen)
-                if not sub_totals and not sub_credits:
+                if not sub_totals:
+                    # Matches the pre-credits behavior: an empty resource
+                    # result means the sibling key didn't resolve to the
+                    # real recipe, regardless of whether it happened to
+                    # carry a nonzero Credits value (e.g. a stub entry) —
+                    # retry under the plain pname key for the real one.
                     sub_totals, sub_credits = expand_full_cost(pname, blueprints, seen)
             credits_total += sub_credits * count
             for sub_name, sub_count in sub_totals.items():

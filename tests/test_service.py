@@ -516,6 +516,12 @@ def test_build_priority_actions_radiant_relic_suggests_squad_unless_already_on()
     )
     actions = service.build_priority_actions(result)
     assert len(actions) == 1 and actions[0].urgency == "squad"
+    # best_refinement is computed at whatever squad_size the plan already used
+    # (1, since squad_radiant is False here) -- Radiant already won solo, so
+    # the message must not claim solo isn't worth it (that would contradict
+    # the plan's own recommendation).
+    assert "not worth" not in actions[0].detail
+    assert "solo" not in actions[0].detail.lower()
 
     result.squad_radiant = True
     assert service.build_priority_actions(result) == []
