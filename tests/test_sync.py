@@ -67,3 +67,12 @@ def test_fetch_profile_404_raises_invalid():
     responses.add(responses.GET, sync.PROFILE_URL, status=404)
     with pytest.raises(sync.InvalidAccountId):
         sync.fetch_profile("a" * 24)
+
+
+@responses.activate
+def test_fetch_profile_409_raises_invalid():
+    # A well-formed but non-existent Account ID 409s instead of 404ing —
+    # previously propagated as an uncaught requests.HTTPError.
+    responses.add(responses.GET, sync.PROFILE_URL, status=409)
+    with pytest.raises(sync.InvalidAccountId):
+        sync.fetch_profile("a" * 24)
