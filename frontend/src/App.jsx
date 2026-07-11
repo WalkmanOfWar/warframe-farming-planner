@@ -244,15 +244,16 @@ function Field({ label, hint, children }) {
   )
 }
 
-function Badge({ children, color, bg }) {
+function Badge({ children, color, bg, border, style }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center',
       background: bg || C.surface2,
       color: color || C.muted,
-      border: `1px solid ${C.border}`,
+      border: `1px solid ${border || C.border}`,
       borderRadius: 6, padding: '2px 8px',
       fontSize: 12, fontWeight: 600,
+      ...style,
     }}>
       {children}
     </span>
@@ -977,11 +978,10 @@ function Results({ r }) {
               const s = URGENCY_STYLE[a.urgency] || URGENCY_STYLE.soon
               return (
                 <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                  <span style={{
+                  <Badge color={s.color} bg={s.bg} border={s.border} style={{
                     fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', flexShrink: 0,
-                    color: s.color, background: s.bg, border: `1px solid ${s.border}`,
                     borderRadius: 5, padding: '2px 6px', marginTop: 1,
-                  }}>{s.label}</span>
+                  }}>{s.label}</Badge>
                   <div>
                     <div style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>
                       {a.title}{a.expiry ? <span style={{ color: C.muted, fontWeight: 400 }}> — until {new Date(a.expiry).toLocaleString()}</span> : null}

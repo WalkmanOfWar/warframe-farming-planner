@@ -529,14 +529,24 @@ def test_build_priority_actions_live_relic_farm_node_is_now():
 
 
 def test_build_priority_actions_invasions_are_soon():
-    result = service.RouteResult(
-        missing_equipment=1,
-        event_source={"Invasion — Phobos": ["Ash Prime Systems"]},
-    )
-    actions = service.build_priority_actions(result)
+    # invasion_parts is passed explicitly by plan_route (from its own
+    # invasion_hits), not re-derived by string-matching event_source keys.
+    result = service.RouteResult(missing_equipment=1)
+    actions = service.build_priority_actions(result, invasion_parts={"Ash Prime Systems"})
     assert len(actions) == 1
     assert actions[0].urgency == "soon"
     assert "invasion" in actions[0].title
+
+
+def test_build_priority_actions_ignores_non_invasion_event_source_entries():
+    # event_source can hold non-invasion transient/event entries (bounties,
+    # Kahl's Garrison, ...) built the same way -- these must not be
+    # mistaken for invasion hits just because invasion_parts wasn't passed.
+    result = service.RouteResult(
+        missing_equipment=1,
+        event_source={"Kahl's Garrison (weekly)": ["Some Part"]},
+    )
+    assert service.build_priority_actions(result) == []
 
 
 def test_build_priority_actions_radiant_relic_suggests_squad_unless_already_on():
@@ -574,8 +584,7 @@ def test_build_priority_actions_orders_now_before_soon_before_squad():
     result = service.RouteResult(
         missing_equipment=1,
         daily_deal={"item": "X", "discount": 10, "expiry": "today"},
-        event_source={"Invasion — Phobos": ["X"]},
         non_prime=[service.Mission(node="Uranus - Ur", game_mode="Disruption", parts=["X"])],
     )
-    actions = service.build_priority_actions(result)
+    actions = service.build_priority_actions(result, invasion_parts={"X"})
     assert [a.urgency for a in actions] == ["now", "soon", "squad"]

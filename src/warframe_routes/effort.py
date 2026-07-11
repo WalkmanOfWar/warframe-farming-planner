@@ -62,6 +62,16 @@ DEFAULT_MODE_MINUTES = 4.0
 # A void-fissure crack run (typically a Capture fissure), incl. loading.
 FISSURE_MINUTES = 2.5
 
+# Endless/rotation-based modes -- reward tier depends on how many rounds/
+# waves/rotations you clear, not a single fixed-length run (see the
+# "~N per rotation" MODE_MINUTES comments above and ROTATION_FACTOR below).
+# service.py reuses this to flag routes where a full squad clears rotations
+# faster, rather than hardcoding its own separate list of the same modes.
+ENDLESS_MODES = frozenset({
+    "Defense", "Survival", "Interception", "Excavation", "Disruption",
+    "Mobile Defense", "Defection",
+})
+
 # Most endless modes (Defense, Survival, Excavation, Interception, Mobile
 # Defense, ...) hand out rewards on an A,A,B,C cadence, so a deeper rotation
 # costs more real time per reward: A lands first, B on the 3rd drop, C on the
