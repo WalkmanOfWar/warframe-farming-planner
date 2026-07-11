@@ -441,3 +441,15 @@ def test_build_resource_needs_shortfall_floors_at_zero_when_overstocked():
 
 def test_build_resource_needs_skips_unmatched_equipment():
     assert service.build_resource_needs(["Totally Unknown Item"], {}) == []
+
+
+def test_total_credits_needed_sums_across_equipment():
+    blueprints = {
+        "Rhino": {"Credits": 25000, "Parts": []},
+        "Volt Prime": {"Credits": 15000, "Parts": []},
+    }
+    assert service.total_credits_needed(["Rhino", "Volt Prime"], blueprints) == 40000
+
+
+def test_total_credits_needed_skips_unmatched_equipment():
+    assert service.total_credits_needed(["Totally Unknown Item"], {}) == 0

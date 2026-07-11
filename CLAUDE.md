@@ -329,5 +329,12 @@ Both the **Prime relic chain and the non-Prime direct chain are built**
    total into an actual shortfall when a live inventory is available;
    without one, only the gross need is shown.
 
+   The same wiki data carries a `Credits` cost per blueprint, ignored until
+   `expand_full_cost()` (the resource-only `expand_resource_cost()` is now a
+   thin wrapper around it) started accumulating it alongside resources through
+   both sub-part shapes. `service.total_credits_needed()` sums it across every
+   still-missing item the same way `build_resource_needs()` sums resources —
+   surfaced as `RouteResult.credits_needed`.
+
 The modular pipeline is structured so each can be added without disturbing the
 others; `optimize.py` stays objective-agnostic.

@@ -171,6 +171,8 @@ def route(req: RouteRequest) -> dict:
         blueprints = blueprint_costs.load_blueprints(force_refresh=req.refresh)
         result.resource_needs = service.build_resource_needs(
             result.missing_equipment_names, blueprints, owned_resources)
+        result.credits_needed = service.total_credits_needed(
+            result.missing_equipment_names, blueprints)
     except Exception:
         pass  # resource costs are a bonus annotation, never required
 

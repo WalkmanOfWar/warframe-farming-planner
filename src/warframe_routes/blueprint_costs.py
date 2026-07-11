@@ -194,12 +194,13 @@ def load_blueprints(force_refresh: bool = False) -> dict[str, dict]:
         return {}
 
 
-def expand_resource_cost(
+def expand_full_cost(
     name: str, blueprints: dict[str, dict], _seen: frozenset[str] = frozenset()
-) -> dict[str, int]:
-    """Flatten one blueprint's full resource cost, recursing into any nested
-    sub-component build (``Type in {"Item", "PrimePart"}``) so the result is
-    the total raw materials needed from zero, not just the final-assembly step.
+) -> tuple[dict[str, int], int]:
+    """Flatten one blueprint's full cost — both raw materials and credits —
+    recursing into any nested sub-component build (``Type in {"Item",
+    "PrimePart"}``) so the result is the total needed from zero, not just the
+    final-assembly step.
 
     Weapons and Warframes structure sub-parts differently in this data:
     a weapon's Barrel/Receiver/Stock usually carries its own embedded
@@ -208,14 +209,24 @@ def expand_resource_cost(
     ``"<Frame> <Part>"`` (e.g. "Dante" + "Chassis" -> "Dante Chassis"), so a
     part with no embedded Cost is looked up as a sibling by that convention.
 
-    Returns ``{}`` for a name absent from ``blueprints`` (no known cost) —
-    silence, not a guess. ``_seen`` guards against a malformed cyclic
-    reference in the source data; normal data never triggers it.
+    Returns ``({}, 0)`` for a name absent from ``blueprints`` (no known
+    cost) — silence, not a guess. ``_seen`` guards against a malformed
+    cyclic reference in the source data; normal data never triggers it.
     """
     entry = blueprints.get(name)
     if not entry or name in _seen:
-        return {}
-    return _expand_parts(entry.get("Parts") or [], blueprints, _seen | {name}, name)
+        return {}, 0
+    resources, sub_credits = _expand_parts(entry.get("Parts") or [], blueprints, _seen | {name}, name)
+    return resources, (entry.get("Credits") or 0) + sub_credits
+
+
+def expand_resource_cost(
+    name: str, blueprints: dict[str, dict], _seen: frozenset[str] = frozenset()
+) -> dict[str, int]:
+    """Same as :func:`expand_full_cost`, discarding the credits total —
+    kept as the stable, narrower entry point most callers want."""
+    resources, _credits = expand_full_cost(name, blueprints, _seen)
+    return resources
 
 
 def _join_sibling_name(parent_name: str, pname: str) -> str:
@@ -235,8 +246,9 @@ def _join_sibling_name(parent_name: str, pname: str) -> str:
 
 def _expand_parts(
     parts: list, blueprints: dict[str, dict], seen: frozenset[str], parent_name: str
-) -> dict[str, int]:
+) -> tuple[dict[str, int], int]:
     totals: dict[str, int] = {}
+    credits_total = 0
     for part in parts:
         if not isinstance(part, dict):
             continue
@@ -245,17 +257,20 @@ def _expand_parts(
         if part.get("Type") in _NESTED_PART_TYPES:
             cost = part.get("Cost")
             if cost:
-                sub_totals = _expand_parts(cost.get("Parts") or [], blueprints, seen, pname)
+                sub_totals, sub_credits = _expand_parts(
+                    cost.get("Parts") or [], blueprints, seen, pname)
+                sub_credits += cost.get("Credits") or 0
             else:
                 sibling = _join_sibling_name(parent_name, pname)
-                sub_totals = expand_resource_cost(sibling, blueprints, seen)
-                if not sub_totals:
-                    sub_totals = expand_resource_cost(pname, blueprints, seen)
+                sub_totals, sub_credits = expand_full_cost(sibling, blueprints, seen)
+                if not sub_totals and not sub_credits:
+                    sub_totals, sub_credits = expand_full_cost(pname, blueprints, seen)
+            credits_total += sub_credits * count
             for sub_name, sub_count in sub_totals.items():
                 totals[sub_name] = totals.get(sub_name, 0) + sub_count * count
         elif pname:
             totals[pname] = totals.get(pname, 0) + count
-    return totals
+    return totals, credits_total
 
 
 def find_blueprint_key(display_name: str, blueprints: dict[str, dict]) -> str | None:
