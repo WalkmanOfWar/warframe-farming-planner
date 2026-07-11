@@ -37,45 +37,6 @@ def test_invasion_rewards_skips_completed():
     assert any("B (Q)" in d for d in out["fieldron"])
 
 
-def test_vault_trader_stock_flips_word_order_and_strips_weapon_suffix():
-    trader = {
-        "location": "Maroo's Bazaar (Mars)", "expiry": "2099-01-01T00:00:00.000Z",
-        "inventory": [
-            {"item": "Prime Corinth",
-             "uniqueName": "/Lotus/StoreItems/Weapons/Tenno/LongGuns/PrimeCorinth/PrimeCorinth"},
-            {"item": "Astilla Prime Weapon",
-             "uniqueName": "/Lotus/StoreItems/Weapons/Tenno/LongGuns/PrimeAstilla/AstillaPrimeWeapon"},
-            {"item": "Titania Prime",
-             "uniqueName": "/Lotus/StoreItems/Powersuits/Fairy/TitaniaPrime"},
-        ],
-    }
-    stock = ws.vault_trader_stock(trader)
-    assert stock["items"]["corinth prime"] == "Corinth Prime"
-    assert stock["items"]["astilla prime"] == "Astilla Prime"
-    assert stock["items"]["titania prime"] == "Titania Prime"
-
-
-def test_vault_trader_stock_excludes_cosmetics_and_bundles():
-    trader = {
-        "location": "Maroo's Bazaar (Mars)", "expiry": "2099-01-01T00:00:00.000Z",
-        "inventory": [
-            {"item": "M P V Titania Prime Single Pack",
-             "uniqueName": "/Lotus/Types/StoreItems/Packages/MegaPrimeVault/MPVTitaniaPrimeSinglePack"},
-            {"item": "Titania Prime Syandana",
-             "uniqueName": "/Lotus/StoreItems/Upgrades/Skins/Scarves/TitaniaPrimeSyandana"},
-            {"item": "Titania Prime Bobble Head",
-             "uniqueName": "/Lotus/StoreItems/Types/Items/ShipDecos/TitaniaPrimeBobbleHead"},
-        ],
-    }
-    assert ws.vault_trader_stock(trader) is None  # nothing left after filtering
-
-
-def test_vault_trader_stock_none_when_not_trading():
-    assert ws.vault_trader_stock({"location": "x", "inventory": []}) is None
-    assert ws.vault_trader_stock({"location": "x", "inventory": [{"item": "Y"}],
-                                  "expiry": "2000-01-01T00:00:00.000Z"}) is None
-
-
 def test_daily_deal_returns_first_unexpired():
     deals = [{"item": "Detonite Injector", "discount": 20,
               "expiry": "2099-01-01T00:00:00.000Z"}]

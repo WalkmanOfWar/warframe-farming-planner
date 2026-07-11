@@ -97,11 +97,12 @@ class BuyVsFarm:
 @dataclass
 class PriorityAction:
     """One "what to do right now" call-out, ranked by how time-sensitive it
-    is. Built purely from signals plan_route already computed (Baro/Varzia/
-    Darvo stock, live fissures, event/invasion matches, squad-friendly
-    modes) — no extra data source, this only re-reads/re-ranks the plan.
+    is. Built purely from signals plan_route already computed (Baro/Darvo
+    stock, live fissures, event/invasion matches, squad-friendly modes) —
+    no extra data source, this only re-reads/re-ranks the plan. (Varzia is
+    deliberately excluded — see plan_route's docstring.)
     ``urgency``: "now" (expires today — Darvo, Baro, an open fissure right
-    now), "soon" (rotates over days — Varzia, invasions), or "squad" (not
+    now), "soon" (rotates over days — invasions), or "squad" (not
     time-limited, but meaningfully faster with 4 players)."""
     urgency: str
     title: str
@@ -165,10 +166,6 @@ class RouteResult:
     active_fissures: dict[str, list[dict]] = field(default_factory=dict)
     # Baro Ki'Teer stock matching needed items: {location, until, items: [...]}.
     baro: dict | None = None
-    # Varzia's (Prime Resurgence) stock matching *fully-vaulted* needed
-    # equipment — the only non-trade way to obtain it: {location, until,
-    # items: [...]}.
-    vault_trader: dict | None = None
     # Darvo's current daily deal, if it matches a needed item:
     # {item, discount, expiry}.
     daily_deal: dict | None = None
@@ -342,7 +339,6 @@ def plan_route(
     fissures: list | None = None,
     void_trader: dict | None = None,
     invasions: list | None = None,
-    vault_trader: dict | None = None,
     daily_deals: list | None = None,
 ) -> RouteResult:
     """Assemble a full route plan from normalized ownership/target sets.
@@ -360,9 +356,15 @@ def plan_route(
     fissure crack — and vaulted parts whose relic sits in the vault are
     reported as still obtainable (``vaulted_crackable``).
 
-    ``vault_trader`` (Varzia / Prime Resurgence) is cross-referenced against
-    fully-vaulted needed equipment — the only non-trade way to obtain it.
     ``daily_deals`` (Darvo) is checked for a match against anything needed.
+
+    Varzia (Prime Resurgence) is deliberately **not** cross-referenced here:
+    her Prime Warframe/Weapon *set* listings are Regal Aya only — a
+    real-money premium currency, not the free/farmable Aya used for Void
+    Relics — so unlike Baro (Credits+Ducats) or Darvo (Credits/Platinum),
+    "buy it from Varzia" isn't a farming alternative this tool can suggest
+    without contradicting its own "no real money" stance (see the login.php
+    sync rejection in CLAUDE.md for the same reasoning).
     """
     needed_equipment = inventory.compute_needed(want, owned)
     item_by_norm = {items.normalize(it.get("name", "")): it.get("name", "")
@@ -572,17 +574,6 @@ def plan_route(
         result.vaulted_crackable = sorted(
             crackable, key=lambda c: (-c["chance"], c["part"]))
 
-    # Varzia (Prime Resurgence): the only non-trade rescue for equipment that
-    # is otherwise fully vaulted (no relic drops anywhere right now).
-    if vault_trader is not None and result.vaulted_equipment:
-        vstock = worldstate.vault_trader_stock(vault_trader)
-        if vstock:
-            vaulted_norms = {items.normalize(e) for e in result.vaulted_equipment}
-            hits = sorted(vstock["items"][n] for n in vstock["items"] if n in vaulted_norms)
-            if hits:
-                result.vault_trader = {"location": vstock["location"],
-                                       "until": vstock["until"], "items": hits}
-
     # Market-only parts, grouped by owning equipment (e.g. Agkuza → Blade,
     # Guard, Handle, Blueprint) so the section reads per-weapon, not as a flat
     # alphabetical wall of "<X> Blueprint".
@@ -727,9 +718,10 @@ def build_priority_actions(result: RouteResult) -> list[PriorityAction]:
 
     "now" = expires within roughly a day (Darvo, Baro, a fissure that's
     open right now — the plan's own live_fissure/farm_node_live flags).
-    "soon" = rotates over days to weeks, no fixed deadline (Varzia,
-    invasions). "squad" = not time-limited at all, just meaningfully
-    faster/better with 4 players (Radiant relics, endless-mode rotations).
+    "soon" = rotates over days to weeks, no fixed deadline (invasions).
+    "squad" = not time-limited at all, just meaningfully faster/better
+    with 4 players (Radiant relics, endless-mode rotations). Varzia is
+    deliberately not a signal here — see plan_route's docstring.
     """
     actions: list[PriorityAction] = []
 
@@ -770,16 +762,6 @@ def build_priority_actions(result: RouteResult) -> list[PriorityAction]:
             urgency="now",
             title=f"{len(live_relic_farms)} relic farm node(s) are open fissures right now",
             detail=f"Farm and crack together in one run: {shown}{more}.",
-        ))
-
-    if result.vault_trader:
-        actions.append(PriorityAction(
-            urgency="soon",
-            title=f"Varzia is selling {len(result.vault_trader['items'])} "
-                  "fully-vaulted item(s) you need",
-            detail=f"At {result.vault_trader['location']} — the only non-trade way to "
-                   "get vaulted gear, and her stock rotates every few weeks.",
-            expiry=result.vault_trader.get("until"),
         ))
 
     invasion_parts = sorted({
