@@ -216,7 +216,10 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     except Exception:
         pass  # resource costs are a bonus annotation, never required
 
-    result.partial_inventory = bool(account_id) and not inv_is_full
+    # inv (not inv_is_full) is the right gate here: a saved --inventory file
+    # also has loose parts, it's only "not full" in the narrower sense used
+    # above (may be stale, so the public profile is still merged in).
+    result.partial_inventory = bool(account_id) and inv is None
     if result.partial_inventory:
         click.echo(
             "Using public profile only — loose parts & unmastered gear aren't "
