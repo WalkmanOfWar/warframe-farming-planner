@@ -197,6 +197,12 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         void_trader=_ws("voidTrader"),
         invasions=_ws("invasions"),
         daily_deals=_ws("dailyDeals"),
+        # inv (not inv_is_full) is the right gate here: a saved --inventory
+        # file also has loose parts, it's only "not full" in the narrower
+        # sense used above (may be stale, so the public profile is still
+        # merged in).
+        account_id_given=bool(account_id),
+        has_full_inventory=inv is not None,
     )
 
     try:
@@ -208,17 +214,11 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
 
     try:
         blueprints = blueprint_costs.load_blueprints(force_refresh=refresh)
-        result.resource_needs = service.build_resource_needs(
+        result.resource_needs, result.credits_needed = service.resource_needs_and_credits(
             result.missing_equipment_names, blueprints, owned_resources)
-        result.credits_needed = service.total_credits_needed(
-            result.missing_equipment_names, blueprints)
     except Exception:
         pass  # resource costs are a bonus annotation, never required
 
-    # inv (not inv_is_full) is the right gate here: a saved --inventory file
-    # also has loose parts, it's only "not full" in the narrower sense used
-    # above (may be stale, so the public profile is still merged in).
-    result.partial_inventory = bool(account_id) and inv is None
     if result.partial_inventory:
         click.echo(
             "Using public profile only — loose parts & unmastered gear aren't "

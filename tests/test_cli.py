@@ -13,11 +13,16 @@ from warframe_routes import catalog, cli, data, items, market, private_inventory
 from warframe_routes.service import Mission, RouteResult
 
 
-def _fake_result(missing=1, non_prime=None):
+def _fake_result(missing=1, non_prime=None, **plan_route_kwargs):
+    # plan_route itself now computes partial_inventory from the
+    # account_id_given/has_full_inventory kwargs cli.py passes it — mirror
+    # that here so mocking plan_route doesn't lose real wiring behavior.
     return RouteResult(
         missing_equipment=missing,
         non_prime=non_prime or [],
         missing_equipment_names=["Rhino"],
+        partial_inventory=(plan_route_kwargs.get("account_id_given", False)
+                            and not plan_route_kwargs.get("has_full_inventory", False)),
     )
 
 
@@ -57,7 +62,7 @@ def test_no_owned_source_and_no_wishlist_is_rejected():
 def test_wishlist_only_plan_prints_missions(monkeypatch, tmp_path):
     monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(
         missing=1, non_prime=[Mission(node="Venus - Fossa", game_mode="Assassination",
-                                       parts=["Rhino Chassis Blueprint"])]))
+                                       parts=["Rhino Chassis Blueprint"])], **kw))
     result = CliRunner().invoke(cli.cli, ["route", "--wishlist", _wishlist(tmp_path)])
     assert result.exit_code == 0, result.output
     assert "Non-Prime" in result.output
@@ -66,7 +71,7 @@ def test_wishlist_only_plan_prints_missions(monkeypatch, tmp_path):
 
 
 def test_nothing_to_farm_message(monkeypatch, tmp_path):
-    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=0))
+    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=0, **kw))
     result = CliRunner().invoke(cli.cli, ["route", "--wishlist", _wishlist(tmp_path)])
     assert result.exit_code == 0
     assert "Nothing to farm" in result.output
@@ -74,7 +79,7 @@ def test_nothing_to_farm_message(monkeypatch, tmp_path):
 
 def test_account_id_only_shows_partial_inventory_note(monkeypatch, tmp_path):
     monkeypatch.setattr(sync, "fetch_owned", lambda account_id: set())
-    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1))
+    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1, **kw))
     result = CliRunner().invoke(
         cli.cli, ["route", "--account-id", "a" * 24, "--wishlist", _wishlist(tmp_path)])
     assert result.exit_code == 0, result.output
@@ -95,7 +100,7 @@ def test_account_id_with_inventory_file_does_not_show_partial_note(monkeypatch, 
     monkeypatch.setattr(private_inventory, "owned_parts", lambda inv, items_data: set())
     monkeypatch.setattr(private_inventory, "owned_relics", lambda inv, items_data: {})
     monkeypatch.setattr(private_inventory, "owned_resources", lambda inv, items_data: {})
-    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1))
+    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1, **kw))
     result = CliRunner().invoke(cli.cli, [
         "route", "--account-id", "a" * 24, "--inventory", str(inv_path),
         "--wishlist", _wishlist(tmp_path),
@@ -125,7 +130,7 @@ def test_helper_path_skips_public_profile_and_note(monkeypatch, tmp_path):
     monkeypatch.setattr(private_inventory, "owned_parts", lambda inv, items_data: set())
     monkeypatch.setattr(private_inventory, "owned_relics", lambda inv, items_data: {})
     monkeypatch.setattr(private_inventory, "owned_resources", lambda inv, items_data: {})
-    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1))
+    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1, **kw))
     result = CliRunner().invoke(cli.cli, [
         "route", "--account-id", "a" * 24, "--helper", "helper.exe",
         "--wishlist", _wishlist(tmp_path),

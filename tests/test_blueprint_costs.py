@@ -122,6 +122,18 @@ def test_find_blueprint_key_case_insensitive():
     assert bc.find_blueprint_key("Totally Unknown", blueprints) is None
 
 
+def test_find_blueprint_key_with_prebuilt_index_matches_linear_scan():
+    blueprints = _fixture_blueprints()
+    index = bc.build_key_index(blueprints)
+    assert index == {
+        "aeolak": "Aeolak", "dante": "Dante", "dante chassis": "Dante Chassis",
+        "ash prime": "Ash Prime", "ash prime chassis": "Ash Prime Chassis",
+    }
+    assert bc.find_blueprint_key("dante", blueprints, index) == "Dante"
+    assert bc.find_blueprint_key("Ash Prime", blueprints, index) == "Ash Prime"
+    assert bc.find_blueprint_key("Totally Unknown", blueprints, index) is None
+
+
 def test_join_sibling_name_dedupes_overlapping_word():
     assert bc._join_sibling_name("Ash Prime", "Prime Chassis") == "Ash Prime Chassis"
     assert bc._join_sibling_name("Dante", "Chassis") == "Dante Chassis"

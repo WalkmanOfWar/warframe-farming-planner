@@ -278,12 +278,28 @@ def _expand_parts(
     return totals, credits_total
 
 
-def find_blueprint_key(display_name: str, blueprints: dict[str, dict]) -> str | None:
+def build_key_index(blueprints: dict[str, dict]) -> dict[str, str]:
+    """Normalized-name -> real key, for O(1) find_blueprint_key lookups
+    across a batch of names. Build once per blueprints dict and reuse — the
+    dict itself only changes when the 24h wiki-data cache refreshes."""
+    return {normalize(key): key for key in blueprints}
+
+
+def find_blueprint_key(
+    display_name: str, blueprints: dict[str, dict], _index: dict[str, str] | None = None
+) -> str | None:
     """Match a catalog display name to this module's (differently-cased,
-    sometimes differently-spaced) key, via normalized exact match."""
+    sometimes differently-spaced) key, via normalized exact match.
+
+    Pass a prebuilt ``_index`` (see :func:`build_key_index`) when calling
+    this for many names against the same ``blueprints`` dict — without it,
+    a miss falls back to an O(N) linear scan per call.
+    """
     if display_name in blueprints:
         return display_name
     target = normalize(display_name)
+    if _index is not None:
+        return _index.get(target)
     for key in blueprints:
         if normalize(key) == target:
             return key
