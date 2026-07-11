@@ -706,26 +706,28 @@ def plan_route(
     for desc, its in sorted(invasion_hits.items()):
         result.event_source.setdefault(desc, sorted(set(its)))
 
-    result.priority_actions = build_priority_actions(result)
+    invasion_parts = {name for names in invasion_hits.values() for name in names}
+    result.priority_actions = build_priority_actions(result, invasion_parts=invasion_parts)
 
     return result
 
 
-# Endless modes where a squad clears rotations meaningfully faster (more hands
-# on simultaneous objectives — conduits/excavators/defense waves) — not
-# time-limited like the "now"/"soon" priority categories, but worth flagging.
-_SQUAD_FRIENDLY_MODES = {
-    "Defense", "Survival", "Interception", "Excavation", "Disruption",
-    "Mobile Defense", "Defection",
-}
-
-
-def build_priority_actions(result: RouteResult) -> list[PriorityAction]:
+def build_priority_actions(
+    result: RouteResult, invasion_parts: set[str] | None = None
+) -> list[PriorityAction]:
     """Rank plan_route's live-worldstate signals into "do this now" / "do
     this soon" / "better with a squad" — a synthesis, not a new data source.
-    Pure: only reads fields plan_route already populated on ``result``.
-    Called from inside plan_route itself, right before it returns, since
-    everything it reads is already computed by that point.
+    Pure: only reads fields plan_route already populated on ``result`` plus
+    ``invasion_parts`` (the item names plan_route's own invasion_hits already
+    matched). Called from inside plan_route itself, right before it returns,
+    since everything it reads is already computed by that point.
+
+    ``invasion_parts`` is passed explicitly rather than re-derived from
+    ``result.event_source`` by matching an "Invasion — " string prefix:
+    that dict also holds non-invasion transient/event entries (bounties,
+    Kahl's Garrison, ...) built the same way, so filtering by wording
+    would silently break if worldstate.invasion_rewards()'s description
+    format ever changes.
 
     "now" = expires within roughly a day (Darvo, Baro, a fissure that's
     open right now — the plan's own live_fissure/farm_node_live flags).
@@ -775,16 +777,13 @@ def build_priority_actions(result: RouteResult) -> list[PriorityAction]:
             detail=f"Farm and crack together in one run: {shown}{more}.",
         ))
 
-    invasion_parts = sorted({
-        part for src, parts in result.event_source.items()
-        if src.startswith("Invasion") for part in parts
-    })
-    if invasion_parts:
-        shown = ", ".join(invasion_parts[:5])
-        more = "…" if len(invasion_parts) > 5 else ""
+    invasion_parts_sorted = sorted(invasion_parts or set())
+    if invasion_parts_sorted:
+        shown = ", ".join(invasion_parts_sorted[:5])
+        more = "…" if len(invasion_parts_sorted) > 5 else ""
         actions.append(PriorityAction(
             urgency="soon",
-            title=f"{len(invasion_parts)} needed item(s) are current invasion rewards",
+            title=f"{len(invasion_parts_sorted)} needed item(s) are current invasion rewards",
             detail=f"Invasions resolve in hours to a couple of days, then are gone: "
                    f"{shown}{more}.",
         ))
@@ -808,9 +807,9 @@ def build_priority_actions(result: RouteResult) -> list[PriorityAction]:
             ))
 
     squad_modes = sorted({
-        m.game_mode for m in result.non_prime if m.game_mode in _SQUAD_FRIENDLY_MODES
+        m.game_mode for m in result.non_prime if m.game_mode in effort.ENDLESS_MODES
     } | {
-        pr.farm_mode for pr in result.prime if pr.farm_mode in _SQUAD_FRIENDLY_MODES
+        pr.farm_mode for pr in result.prime if pr.farm_mode in effort.ENDLESS_MODES
     })
     if squad_modes:
         actions.append(PriorityAction(

@@ -37,7 +37,7 @@ describe('App', () => {
       vaulted_crackable: [], no_mission_source: [], no_part_source: {},
       special_source: {}, equipment_prerequisites: {}, images: {}, item_types: {},
       refinement: 'Intact', squad_radiant: false, total_minutes: 18,
-      event_source: {}, active_fissures: {}, baro: null, vault_trader: null,
+      event_source: {}, active_fissures: {}, baro: null,
       daily_deal: null, market_prices: {}, buy_vs_farm: [],
       missing_equipment_names: ['Rhino'], resource_needs: [], credits_needed: null,
       partial_inventory: false,
@@ -85,7 +85,7 @@ describe('App', () => {
       no_part_source: {}, special_source: {}, equipment_prerequisites: {},
       images: {}, item_types: {}, refinement: 'Intact', squad_radiant: false,
       total_minutes: null, event_source: {}, active_fissures: {}, baro: null,
-      vault_trader: null, daily_deal: null, market_prices: {}, buy_vs_farm: [],
+      daily_deal: null, market_prices: {}, buy_vs_farm: [],
       missing_equipment_names: ['Rhino'], resource_needs: [], credits_needed: null,
       partial_inventory: true,
     }))
@@ -108,7 +108,7 @@ describe('App', () => {
       no_part_source: {}, special_source: {}, equipment_prerequisites: {},
       images: {}, item_types: {}, refinement: 'Intact', squad_radiant: false,
       total_minutes: null, event_source: {}, active_fissures: {}, baro: null,
-      vault_trader: null, daily_deal: null, market_prices: {}, buy_vs_farm: [],
+      daily_deal: null, market_prices: {}, buy_vs_farm: [],
       missing_equipment_names: ['Rhino'], resource_needs: [], credits_needed: null,
       partial_inventory: false,
       priority_actions: [
