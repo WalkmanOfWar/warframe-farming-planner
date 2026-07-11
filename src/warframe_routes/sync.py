@@ -50,7 +50,11 @@ def fetch_profile(account_id: str, timeout: int = 30) -> dict:
             "username — find it in the 'gid' cookie on warframe.com or in EE.log."
         )
     resp = requests.get(PROFILE_URL, params={"playerId": account_id}, timeout=timeout)
-    if resp.status_code == 404:
+    # A well-formed but non-existent Account ID doesn't 404 here — the API
+    # returns 409 Conflict instead. Both mean "no such account," not a
+    # transient failure, so both become the same clean InvalidAccountId
+    # rather than an uncaught HTTPError with a raw traceback.
+    if resp.status_code in (404, 409):
         raise InvalidAccountId(f"No public profile found for Account ID {account_id}.")
     resp.raise_for_status()
     return resp.json()
