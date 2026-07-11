@@ -24,6 +24,17 @@ RELIC_TIER_GUIDE = {
 GENERIC_TIER_HINT = "farm this tier at any matching void fissure"
 
 
+def _fissure_covers_tier(fissure_tier: str, relic_tier: str) -> bool:
+    """A live fissure of ``fissure_tier`` can crack a relic of ``relic_tier``
+    when they match exactly, or when the fissure is "Omnia" — a flex-tier
+    fissure (Lua/Zariman/Albrecht's Labs) that accepts a relic of *any* tier
+    except Requiem (wiki.warframe.com/w/Void_Fissure). Without this, an open
+    Omnia fissure was silently invisible to tier_live/farm_node_live/
+    active_fissures — under-reporting real "crack it right now" opportunities
+    for every non-Requiem tier."""
+    return fissure_tier == relic_tier or (fissure_tier == "Omnia" and relic_tier != "Requiem")
+
+
 @dataclass
 class Mission:
     node: str
@@ -500,8 +511,9 @@ def plan_route(
         live = worldstate.active_fissures(fissures)
         by_tier: dict[str, list[dict]] = {}
         for f in live:
-            if f["tier"] in tiers_needed:
-                by_tier.setdefault(f["tier"], []).append(f)
+            for t in tiers_needed:
+                if _fissure_covers_tier(f["tier"], t):
+                    by_tier.setdefault(t, []).append(f)
         # Not every live fissure is worth the same trip: cracking is a rush-in,
         # grab-reactant-fast job, so Capture/Exterminate (~1.5-3 min/crack) beat
         # Disruption/Excavation (~4 min), which beat Defense/Interception/
@@ -524,11 +536,11 @@ def plan_route(
             m.live_fissure = node_tiers.get(f"{planet}|{name}".casefold())
         live_tiers = {f["tier"] for f in live if not f["storm"]}
         for pr in result.prime:
-            pr.tier_live = pr.tier in live_tiers
+            pr.tier_live = any(_fissure_covers_tier(t, pr.tier) for t in live_tiers)
             if pr.farm_node:  # "Void / Hepit" — is the farm node a live fissure
                 p, _, n = pr.farm_node.partition(" / ")
-                pr.farm_node_live = (
-                    node_tiers.get(f"{p.strip()}|{n.strip()}".casefold()) == pr.tier)
+                node_tier = node_tiers.get(f"{p.strip()}|{n.strip()}".casefold())
+                pr.farm_node_live = node_tier is not None and _fissure_covers_tier(node_tier, pr.tier)
 
     # Everything the player still needs, normalized — for Baro/invasion matching.
     needed_norms = set(plan.part_display) | set(needed_equipment)
