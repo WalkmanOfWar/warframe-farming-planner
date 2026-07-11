@@ -956,6 +956,21 @@ function Results({ r }) {
 
   return (
     <div>
+      {/* Partial-inventory notice */}
+      {r.partial_inventory && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 10,
+          marginBottom: 16, padding: '12px 16px',
+          background: C.goldFaint, border: `1px solid ${C.goldBorder}`, borderRadius: 12,
+        }}>
+          <AlertCircle size={16} color={C.gold} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>
+            Using public profile only — loose parts & unmastered gear aren't counted.
+            For the full picture, add a <b>Nonce</b> or upload an <b>inventory.json</b> above.
+          </span>
+        </div>
+      )}
+
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
         <StatCard icon={<Swords size={16} color={C.gold} />}  n={r.missing_equipment} label="missing" />

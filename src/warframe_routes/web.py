@@ -176,6 +176,8 @@ def route(req: RouteRequest) -> dict:
     except Exception:
         pass  # resource costs are a bonus annotation, never required
 
+    result.partial_inventory = bool(req.account_id) and not inv_is_full
+
     return result.to_dict()
 
 

@@ -179,6 +179,12 @@ class RouteResult:
     # Total credits to build everything missing (same blueprint data + same
     # partial coverage as resource_needs) — see total_credits_needed().
     credits_needed: int | None = None
+    # True when ownership came only from the public profile (--account-id
+    # with no --helper/--nonce/--inventory) — misses loose parts and
+    # built-but-unmastered gear. Set by the caller (cli.py/web.py) after
+    # plan_route returns; False whenever a full private inventory was used,
+    # or no account was given at all.
+    partial_inventory: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
