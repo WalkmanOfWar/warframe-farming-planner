@@ -176,6 +176,9 @@ class RouteResult:
     # build_resource_needs(). Populated by the caller after plan_route
     # returns, same reasoning as market_prices/buy_vs_farm.
     resource_needs: list[ResourceNeed] = field(default_factory=list)
+    # Total credits to build everything missing (same blueprint data + same
+    # partial coverage as resource_needs) — see total_credits_needed().
+    credits_needed: int | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -806,6 +809,20 @@ def build_resource_needs(
     else:
         out.sort(key=lambda r: (-(r.short_by or 0), -r.need))
     return out
+
+
+def total_credits_needed(equipment_names: list[str], blueprints: dict[str, dict]) -> int:
+    """Sum credits needed to build every still-missing item — same data
+    source and same "unmatched equipment contributes nothing" rule as
+    build_resource_needs (kept separate rather than folded into it, since
+    that function's signature already shipped)."""
+    total = 0
+    for name in equipment_names:
+        key = blueprint_costs.find_blueprint_key(name, blueprints)
+        if key:
+            _resources, credits = blueprint_costs.expand_full_cost(key, blueprints)
+            total += credits
+    return total
 
 
 _CDN = "https://cdn.warframestat.us/img/"

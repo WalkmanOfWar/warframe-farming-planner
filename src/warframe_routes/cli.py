@@ -211,6 +211,8 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         blueprints = blueprint_costs.load_blueprints(force_refresh=refresh)
         result.resource_needs = service.build_resource_needs(
             result.missing_equipment_names, blueprints, owned_resources)
+        result.credits_needed = service.total_credits_needed(
+            result.missing_equipment_names, blueprints)
     except Exception:
         pass  # resource costs are a bonus annotation, never required
 
@@ -272,9 +274,11 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
     if result.resource_needs:
         has_deficit = any(r.short_by is not None for r in result.resource_needs)
         label = "still need" if has_deficit else "total needed"
+        credits = (f" — ~{result.credits_needed:,} credits to build it all"
+                   if result.credits_needed else "")
         click.echo(f"\nCrafting resources {label} for everything missing "
                    f"({len(result.resource_needs)} resource(s), partial data — "
-                   "not every item's recipe is known):")
+                   f"not every item's recipe is known){credits}:")
         for r in result.resource_needs:
             if r.short_by is not None:
                 if r.short_by == 0:

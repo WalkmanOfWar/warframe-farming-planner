@@ -141,3 +141,26 @@ def test_load_blueprints_returns_empty_on_unparseable_response(tmp_path, monkeyp
     with responses.RequestsMock() as rsps:
         rsps.add(responses.GET, bc.BLUEPRINTS_URL, body="not lua at all {{{")
         assert bc.load_blueprints() == {}
+
+
+def test_expand_full_cost_sums_credits_across_sibling_lookup():
+    blueprints = _fixture_blueprints()
+    resources, credits = bc.expand_full_cost("Dante", blueprints)
+    # Dante's own 25000 + Dante Chassis's own 15000 (sibling-looked-up sub-build).
+    assert resources == {"Orokin Cell": 3, "Alloy Plate": 8000}
+    assert credits == 40000
+
+
+def test_expand_full_cost_sums_credits_across_embedded_cost():
+    blueprints = _fixture_blueprints()
+    # Aeolak's fixture Cost block has no explicit Credits key -> contributes 0,
+    # only the top-level Aeolak Credits (15000) should be counted.
+    _resources, credits = bc.expand_full_cost("Aeolak", blueprints)
+    assert credits == 15000
+
+
+def test_expand_resource_cost_unchanged_by_credits_refactor():
+    # The pre-existing public function must still return just the dict.
+    blueprints = _fixture_blueprints()
+    assert bc.expand_resource_cost("Dante", blueprints) == {
+        "Orokin Cell": 3, "Alloy Plate": 8000}

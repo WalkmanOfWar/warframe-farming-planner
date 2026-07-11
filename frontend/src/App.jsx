@@ -1335,6 +1335,7 @@ function Results({ r }) {
             <p style={{ margin: '0 0 12px', fontSize: 13, color: C.muted }}>
               From a separate source (Warframe Wiki) than the rest of this plan — WFCD doesn't
               track build costs. Covers ~70% of items; anything not listed here has no known recipe data.
+              {r.credits_needed ? <> Also needs <b style={{ color: C.text }}>~{r.credits_needed.toLocaleString()}</b> credits total.</> : null}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {rows.map(x => (
