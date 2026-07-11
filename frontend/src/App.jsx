@@ -954,8 +954,47 @@ function Results({ r }) {
   const visibleRelics = showAllRelics || sq ? filteredPrime : filteredPrime.slice(0, TOP_N)
   const totalCracks = filteredPrime.reduce((s, pr) => s + (pr.cracks || 0), 0)
 
+  const URGENCY_STYLE = {
+    now:   { label: 'NOW',   color: C.error, bg: C.errorFaint, border: C.errorBorder },
+    soon:  { label: 'SOON',  color: C.gold,  bg: C.goldFaint,  border: C.goldBorder },
+    squad: { label: 'SQUAD', color: C.accent, bg: C.accentFaint, border: C.accentBorder },
+  }
+
   return (
     <div>
+      {/* Priority actions — what to do first */}
+      {r.priority_actions?.length > 0 && (
+        <div style={{
+          marginBottom: 16, padding: '14px 16px',
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <Zap size={15} color={C.gold} />
+            <span style={{ fontWeight: 700, fontSize: 14, color: C.gold }}>What to do first</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {r.priority_actions.map((a, i) => {
+              const s = URGENCY_STYLE[a.urgency] || URGENCY_STYLE.soon
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', flexShrink: 0,
+                    color: s.color, background: s.bg, border: `1px solid ${s.border}`,
+                    borderRadius: 5, padding: '2px 6px', marginTop: 1,
+                  }}>{s.label}</span>
+                  <div>
+                    <div style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>
+                      {a.title}{a.expiry ? <span style={{ color: C.muted, fontWeight: 400 }}> — until {a.expiry}</span> : null}
+                    </div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{a.detail}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Partial-inventory notice */}
       {r.partial_inventory && (
         <div style={{

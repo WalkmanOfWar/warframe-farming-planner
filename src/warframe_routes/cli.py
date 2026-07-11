@@ -231,6 +231,15 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         click.echo("Nothing to farm — you already own everything in the target set.")
         return
 
+    if result.priority_actions:
+        labels = {"now": "DO NOW", "soon": "DO SOON", "squad": "BETTER WITH A SQUAD"}
+        click.echo("=== What to do first ===")
+        for a in result.priority_actions:
+            until = f"  (until {a.expiry})" if a.expiry else ""
+            click.echo(f"[{labels.get(a.urgency, a.urgency.upper())}] {a.title}{until}")
+            click.echo(f"    {a.detail}")
+        click.echo("")
+
     bvf_by_item = {b.item: b for b in result.buy_vs_farm}
 
     if result.non_prime:

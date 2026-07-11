@@ -95,4 +95,34 @@ describe('App', () => {
       screen.getByText(/Using public profile only/)
     ).toBeInTheDocument())
   })
+
+  it('renders the priority-actions digest above the results', async () => {
+    global.fetch.mockReturnValue(jsonResponse({
+      missing_equipment: 1, non_prime: [], non_prime_uncovered: [],
+      prime: [], prime_part_count: 0, tiers: [], vaulted_equipment: [],
+      vaulted_part_count: 0, vaulted_crackable: [], no_mission_source: [],
+      no_part_source: {}, special_source: {}, equipment_prerequisites: {},
+      images: {}, item_types: {}, refinement: 'Intact', squad_radiant: false,
+      total_minutes: null, event_source: {}, active_fissures: {}, baro: null,
+      vault_trader: null, daily_deal: null, market_prices: {}, buy_vs_farm: [],
+      missing_equipment_names: ['Rhino'], resource_needs: [], credits_needed: null,
+      partial_inventory: false,
+      priority_actions: [
+        { urgency: 'now', title: "Darvo's Daily Deal: Rhino Prime",
+          detail: '50% off — one day only.', expiry: null },
+        { urgency: 'squad', title: '1 endless mode(s) in this route reward teamwork',
+          detail: 'Disruption — a full squad clears rotations faster.', expiry: null },
+      ],
+    }))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByPlaceholderText(/Caliban Prime/), 'Rhino')
+    await user.click(screen.getByRole('button', { name: /Plan route/i }))
+
+    await waitFor(() => expect(screen.getByText('What to do first')).toBeInTheDocument())
+    expect(screen.getByText(/Darvo's Daily Deal/)).toBeInTheDocument()
+    expect(screen.getByText('NOW')).toBeInTheDocument()
+    expect(screen.getByText('SQUAD')).toBeInTheDocument()
+  })
 })

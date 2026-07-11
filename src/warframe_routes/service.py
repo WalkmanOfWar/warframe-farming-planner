@@ -95,6 +95,21 @@ class BuyVsFarm:
 
 
 @dataclass
+class PriorityAction:
+    """One "what to do right now" call-out, ranked by how time-sensitive it
+    is. Built purely from signals plan_route already computed (Baro/Varzia/
+    Darvo stock, live fissures, event/invasion matches, squad-friendly
+    modes) — no extra data source, this only re-reads/re-ranks the plan.
+    ``urgency``: "now" (expires today — Darvo, Baro, an open fissure right
+    now), "soon" (rotates over days — Varzia, invasions), or "squad" (not
+    time-limited, but meaningfully faster with 4 players)."""
+    urgency: str
+    title: str
+    detail: str
+    expiry: str | None = None
+
+
+@dataclass
 class ResourceNeed:
     """Total raw crafting resources (Orokin Cell, Ferrite, Neurodes, ...)
     needed to build every still-missing item in the plan, from a completely
@@ -185,6 +200,10 @@ class RouteResult:
     # plan_route returns; False whenever a full private inventory was used,
     # or no account was given at all.
     partial_inventory: bool = False
+    # "Do this now / soon / with a squad" digest — see build_priority_actions().
+    # Set by plan_route itself (not the caller): it only re-reads fields the
+    # rest of this function already computed, no extra I/O.
+    priority_actions: list[PriorityAction] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -685,7 +704,125 @@ def plan_route(
     for desc, its in sorted(invasion_hits.items()):
         result.event_source.setdefault(desc, sorted(set(its)))
 
+    result.priority_actions = build_priority_actions(result)
+
     return result
+
+
+# Endless modes where a squad clears rotations meaningfully faster (more hands
+# on simultaneous objectives — conduits/excavators/defense waves) — not
+# time-limited like the "now"/"soon" priority categories, but worth flagging.
+_SQUAD_FRIENDLY_MODES = {
+    "Defense", "Survival", "Interception", "Excavation", "Disruption",
+    "Mobile Defense", "Defection",
+}
+
+
+def build_priority_actions(result: RouteResult) -> list[PriorityAction]:
+    """Rank plan_route's live-worldstate signals into "do this now" / "do
+    this soon" / "better with a squad" — a synthesis, not a new data source.
+    Pure: only reads fields plan_route already populated on ``result``.
+    Called from inside plan_route itself, right before it returns, since
+    everything it reads is already computed by that point.
+
+    "now" = expires within roughly a day (Darvo, Baro, a fissure that's
+    open right now — the plan's own live_fissure/farm_node_live flags).
+    "soon" = rotates over days to weeks, no fixed deadline (Varzia,
+    invasions). "squad" = not time-limited at all, just meaningfully
+    faster/better with 4 players (Radiant relics, endless-mode rotations).
+    """
+    actions: list[PriorityAction] = []
+
+    if result.daily_deal:
+        d = result.daily_deal
+        actions.append(PriorityAction(
+            urgency="now",
+            title=f"Darvo's Daily Deal: {d['item']}",
+            detail=f"{d['discount']}% off — Darvo's deals last one day only.",
+            expiry=d.get("expiry"),
+        ))
+
+    if result.baro:
+        actions.append(PriorityAction(
+            urgency="now",
+            title=f"Baro Ki'Teer has {len(result.baro['items'])} item(s) you need",
+            detail=f"At {result.baro['location']} — he leaves in about two days "
+                   "and his stock rotates every visit.",
+            expiry=result.baro.get("until"),
+        ))
+
+    live_fissure_nodes = [m.node for m in result.non_prime if m.live_fissure]
+    if live_fissure_nodes:
+        shown = ", ".join(live_fissure_nodes[:5])
+        more = "…" if len(live_fissure_nodes) > 5 else ""
+        actions.append(PriorityAction(
+            urgency="now",
+            title=f"{len(live_fissure_nodes)} route node(s) are open fissures right now",
+            detail=f"Bring a relic and crack it in the same run as the part farm: "
+                   f"{shown}{more}.",
+        ))
+
+    live_relic_farms = [pr.relic for pr in result.prime if pr.farm_node_live]
+    if live_relic_farms:
+        shown = ", ".join(live_relic_farms[:5])
+        more = "…" if len(live_relic_farms) > 5 else ""
+        actions.append(PriorityAction(
+            urgency="now",
+            title=f"{len(live_relic_farms)} relic farm node(s) are open fissures right now",
+            detail=f"Farm and crack together in one run: {shown}{more}.",
+        ))
+
+    if result.vault_trader:
+        actions.append(PriorityAction(
+            urgency="soon",
+            title=f"Varzia is selling {len(result.vault_trader['items'])} "
+                  "fully-vaulted item(s) you need",
+            detail=f"At {result.vault_trader['location']} — the only non-trade way to "
+                   "get vaulted gear, and her stock rotates every few weeks.",
+            expiry=result.vault_trader.get("until"),
+        ))
+
+    invasion_parts = sorted({
+        part for src, parts in result.event_source.items()
+        if src.startswith("Invasion") for part in parts
+    })
+    if invasion_parts:
+        shown = ", ".join(invasion_parts[:5])
+        more = "…" if len(invasion_parts) > 5 else ""
+        actions.append(PriorityAction(
+            urgency="soon",
+            title=f"{len(invasion_parts)} needed item(s) are current invasion rewards",
+            detail=f"Invasions resolve in hours to a couple of days, then are gone: "
+                   f"{shown}{more}.",
+        ))
+
+    if not result.squad_radiant:
+        radiant_worth_it = [pr.relic for pr in result.prime if pr.best_refinement == "Radiant"]
+        if radiant_worth_it:
+            actions.append(PriorityAction(
+                urgency="squad",
+                title=f"{len(radiant_worth_it)} relic(s) farm fastest as Radiant",
+                detail="Radiant only pays off with a squad sharing 4 cracks per run "
+                       "(enable 4× squad radiant cracking) — solo it's often not "
+                       "worth the refinement cost.",
+            ))
+
+    squad_modes = sorted({
+        m.game_mode for m in result.non_prime if m.game_mode in _SQUAD_FRIENDLY_MODES
+    } | {
+        pr.farm_mode for pr in result.prime if pr.farm_mode in _SQUAD_FRIENDLY_MODES
+    })
+    if squad_modes:
+        actions.append(PriorityAction(
+            urgency="squad",
+            title=f"{len(squad_modes)} endless mode(s) in this route reward teamwork",
+            detail=", ".join(squad_modes) + " — a full squad clears rotations faster "
+                   "and more reliably (more hands on simultaneous objectives).",
+        ))
+
+    order = {"now": 0, "soon": 1, "squad": 2}
+    actions.sort(key=lambda a: order.get(a.urgency, 99))
+    return actions
 
 
 # Below this expected-minutes threshold, farming is assumed to still be the
