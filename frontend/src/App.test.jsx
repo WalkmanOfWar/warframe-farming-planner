@@ -157,4 +157,42 @@ describe('App', () => {
     expect(screen.queryByText(new RegExp(isoExpiry))).not.toBeInTheDocument()
     expect(screen.getByText(new RegExp(new Date(isoExpiry).toLocaleString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeInTheDocument()
   })
+
+  it('lets the user check off collected parts and persists across reload', async () => {
+    global.fetch.mockReturnValue(jsonResponse({
+      missing_equipment: 1,
+      non_prime: [{
+        node: 'Venus - Fossa', game_mode: 'Assassination',
+        parts: ['Rhino Chassis Blueprint', 'Rhino Systems Blueprint'], part_runs: {},
+      }],
+      non_prime_uncovered: [], prime: [], prime_part_count: 0,
+      tiers: [], vaulted_equipment: [], vaulted_part_count: 0,
+      vaulted_crackable: [], no_mission_source: [], no_part_source: {},
+      special_source: {}, equipment_prerequisites: {}, images: {}, item_types: {},
+      refinement: 'Intact', squad_radiant: false, total_minutes: 18,
+      event_source: {}, active_fissures: {}, baro: null,
+      daily_deal: null, market_prices: {}, buy_vs_farm: [],
+      missing_equipment_names: ['Rhino'], resource_needs: [], credits_needed: null,
+      partial_inventory: false,
+    }))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByPlaceholderText(/Caliban Prime/), 'Rhino')
+    await user.click(screen.getByRole('button', { name: /Plan route/i }))
+    await waitFor(() => expect(screen.getByText('Rhino Chassis Blueprint')).toBeInTheDocument())
+
+    expect(screen.getByText('0 of 2 parts collected')).toBeInTheDocument()
+
+    const checkbox = screen.getByRole('checkbox', { name: /Rhino Chassis Blueprint/i })
+    await user.click(checkbox)
+
+    expect(screen.getByText('1 of 2 parts collected')).toBeInTheDocument()
+    expect(checkbox).toBeChecked()
+    expect(JSON.parse(localStorage.getItem('wf_checked_parts'))).toEqual(['Rhino Chassis Blueprint'])
+
+    await user.click(screen.getByRole('button', { name: 'Clear progress' }))
+    expect(screen.getByText('0 of 2 parts collected')).toBeInTheDocument()
+    expect(localStorage.getItem('wf_checked_parts')).toBeNull()
+  })
 })

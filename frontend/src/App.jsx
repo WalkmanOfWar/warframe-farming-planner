@@ -244,6 +244,19 @@ function Field({ label, hint, children }) {
   )
 }
 
+function PartCheckbox({ checked, onChange, label }) {
+  return (
+    <input
+      type="checkbox" checked={checked} onChange={onChange}
+      aria-label={`Mark ${label} as collected`}
+      title="Mark as collected — tracked locally, doesn't change the plan"
+      style={{
+        width: 15, height: 15, flexShrink: 0, accentColor: C.success, cursor: 'pointer',
+      }}
+    />
+  )
+}
+
 function Badge({ children, color, bg, border, style }) {
   return (
     <span style={{
@@ -916,6 +929,18 @@ function Results({ r }) {
   const [search, setSearch] = useState('')
   const [showAllMissions, setShowAllMissions] = useState(false)
   const [showAllRelics, setShowAllRelics] = useState(false)
+  const [checkedParts, setCheckedParts] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('wf_checked_parts') || '[]')) }
+    catch { return new Set() }
+  })
+  const toggleChecked = (name) => {
+    setCheckedParts(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name); else next.add(name)
+      try { localStorage.setItem('wf_checked_parts', JSON.stringify([...next])) } catch {}
+      return next
+    })
+  }
   const sq = search.trim().toLowerCase()
   const w = useWindowWidth()
   const isMobile = w < 520
@@ -939,6 +964,14 @@ function Results({ r }) {
   }
 
   const nonPrimeParts = nonPrimeLive.reduce((n, m) => n + m.parts.length, 0)
+
+  const allPartNames = useMemo(() => {
+    const s = new Set()
+    for (const m of r.non_prime) for (const p of m.parts) s.add(p)
+    for (const pr of r.prime) for (const p of pr.parts) s.add(p)
+    return s
+  }, [r.non_prime, r.prime])
+  const checkedCount = [...allPartNames].filter(p => checkedParts.has(p)).length
 
   // Sort key: "fast" = quickest missions first; "efficiency" = most parts per
   // run first (best bang for the buck). Unknown-effort missions sink to the end.
@@ -1017,6 +1050,27 @@ function Results({ r }) {
         <StatCard icon={<Gem size={16} color={C.gold} />}     n={r.prime_part_count}   label="prime" />
         <StatCard icon={<Lock size={16} color={C.gold} />}    n={r.vaulted_part_count} label="vaulted" />
       </div>
+
+      {/* Collection progress */}
+      {allPartNames.size > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginBottom: 12, fontSize: 12, color: C.muted,
+        }}>
+          <span>{checkedCount} of {allPartNames.size} part{allPartNames.size !== 1 ? 's' : ''} collected</span>
+          {checkedCount > 0 && (
+            <button onClick={() => {
+              setCheckedParts(new Set())
+              try { localStorage.removeItem('wf_checked_parts') } catch {}
+            }} style={{
+              background: 'none', border: 'none', color: C.accent, cursor: 'pointer',
+              fontSize: 12, padding: 0, fontFamily: 'inherit',
+            }}>
+              Clear progress
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Search */}
       <div style={{ position: 'relative', marginBottom: 12 }}>
@@ -1147,7 +1201,7 @@ function Results({ r }) {
                       {missions.map((m, i) => (
                         <div key={m.node}>
                           {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
-                          <MissionRow index={i + 1} mission={m} images={img} search={sq} prices={r.market_prices} deals={dealsByItem} />
+                          <MissionRow index={i + 1} mission={m} images={img} search={sq} prices={r.market_prices} deals={dealsByItem} checkedParts={checkedParts} onToggleChecked={toggleChecked} />
                         </div>
                       ))}
                     </div>
@@ -1156,7 +1210,7 @@ function Results({ r }) {
               : visibleMissions.map((m, i) => (
                   <div key={m.node}>
                     {i > 0 && <div style={{ height: 1, background: C.border, margin: '4px 0' }} />}
-                    <MissionRow index={i + 1} mission={m} images={img} search={sq} prices={r.market_prices} />
+                    <MissionRow index={i + 1} mission={m} images={img} search={sq} prices={r.market_prices} checkedParts={checkedParts} onToggleChecked={toggleChecked} />
                   </div>
                 ))
             }
@@ -1251,13 +1305,17 @@ function Results({ r }) {
                       </div>
                     )}
                     <div style={{ paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {pr.parts.map(p => (
-                        <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <ItemIcon url={img[p]} name={p} size={24} />
-                          <span style={{ fontSize: 13, color: C.muted }}>{p}</span>
-                          <PriceTag name={p} prices={r.market_prices} deals={dealsByItem} />
-                        </div>
-                      ))}
+                      {pr.parts.map(p => {
+                        const done = checkedParts.has(p)
+                        return (
+                          <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: done ? 0.5 : 1 }}>
+                            <PartCheckbox checked={done} onChange={() => toggleChecked(p)} label={p} />
+                            <ItemIcon url={img[p]} name={p} size={24} />
+                            <span style={{ fontSize: 13, color: C.muted, textDecoration: done ? 'line-through' : 'none' }}>{p}</span>
+                            <PriceTag name={p} prices={r.market_prices} deals={dealsByItem} />
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1594,7 +1652,7 @@ function Highlight({ text, query }) {
   )
 }
 
-function MissionRow({ index, mission, images = {}, search = '', prices = {}, deals = {} }) {
+function MissionRow({ index, mission, images = {}, search = '', prices = {}, deals = {}, checkedParts = new Set(), onToggleChecked = () => {} }) {
   const partRunEntries = Object.entries(mission.part_runs || {}).filter(([, r]) => r != null)
   const tooltip = partRunEntries.length > 1
     ? <><div style={{ fontWeight: 700, color: C.text, marginBottom: 6 }}>Per-part expected runs:</div>
@@ -1632,10 +1690,12 @@ function MissionRow({ index, mission, images = {}, search = '', prices = {}, dea
       <div style={{ paddingLeft: 28, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {mission.parts.map(p => {
           const pr = (mission.part_runs || {})[p]
+          const done = checkedParts.has(p)
           return (
-            <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: done ? 0.5 : 1 }}>
+              <PartCheckbox checked={done} onChange={() => onToggleChecked(p)} label={p} />
               <ItemIcon url={images[p]} name={p} size={24} />
-              <span style={{ fontSize: 13, color: C.muted }}>
+              <span style={{ fontSize: 13, color: C.muted, textDecoration: done ? 'line-through' : 'none' }}>
                 <Highlight text={p} query={search} />
               </span>
               {pr != null && (
