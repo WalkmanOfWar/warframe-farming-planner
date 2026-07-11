@@ -27,6 +27,7 @@ pip install -e ".[web]"          # install FastAPI + uvicorn for the web UI
 cd frontend && npm install && npm run build && cd ..   # build the React SPA -> frontend/dist
 wfroutes serve                   # serve API + built UI at http://127.0.0.1:8000
 cd frontend && npm run dev       # frontend dev server (proxies /api to :8000)
+cd frontend && npm test          # Vitest + Testing Library for App.jsx
 ```
 
 Use `python -m warframe_routes.cli` rather than the `wfroutes` script when its
