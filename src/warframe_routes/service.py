@@ -193,9 +193,11 @@ class RouteResult:
     credits_needed: int | None = None
     # True when ownership came only from the public profile (--account-id
     # with no --helper/--nonce/--inventory) — misses loose parts and
-    # built-but-unmastered gear. Set by the caller (cli.py/web.py) after
-    # plan_route returns; False whenever a full private inventory was used,
-    # or no account was given at all.
+    # built-but-unmastered gear. Set by plan_route itself from its
+    # account_id_given/has_full_inventory args (not by the caller — cli.py
+    # and web.py both need this and previously duplicated the same gating
+    # expression); False whenever a full private inventory was used, or no
+    # account was given at all.
     partial_inventory: bool = False
     # "Do this now / soon / with a squad" digest — see build_priority_actions().
     # Set by plan_route itself (not the caller): it only re-reads fields the
@@ -340,6 +342,8 @@ def plan_route(
     void_trader: dict | None = None,
     invasions: list | None = None,
     daily_deals: list | None = None,
+    account_id_given: bool = False,
+    has_full_inventory: bool = False,
 ) -> RouteResult:
     """Assemble a full route plan from normalized ownership/target sets.
 
@@ -365,6 +369,12 @@ def plan_route(
     "buy it from Varzia" isn't a farming alternative this tool can suggest
     without contradicting its own "no real money" stance (see the login.php
     sync rejection in CLAUDE.md for the same reasoning).
+
+    ``account_id_given``/``has_full_inventory`` set ``RouteResult.
+    partial_inventory`` (true iff an account was given but ownership never
+    came from a full private inventory — --helper/--nonce/--inventory).
+    Computed here instead of by the caller so cli.py and web.py don't each
+    reimplement the same gating logic.
     """
     needed_equipment = inventory.compute_needed(want, owned)
     item_by_norm = {items.normalize(it.get("name", "")): it.get("name", "")
@@ -372,6 +382,7 @@ def plan_route(
     result = RouteResult(missing_equipment=len(needed_equipment),
                          refinement=refinement,
                          squad_radiant=squad_radiant,
+                         partial_inventory=account_id_given and not has_full_inventory,
                          missing_equipment_names=sorted(
                              item_by_norm[e] for e in needed_equipment if e in item_by_norm))
     if not needed_equipment:
@@ -899,19 +910,24 @@ def build_buy_vs_farm(result: RouteResult, prices: dict[str, dict]) -> list[BuyV
     return out
 
 
-def build_resource_needs(
+def resource_needs_and_credits(
     equipment_names: list[str],
     blueprints: dict[str, dict],
     owned_resources: dict[str, int] | None = None,
-) -> list[ResourceNeed]:
-    """Sum raw crafting-resource needs across every still-missing item.
+) -> tuple[list[ResourceNeed], int]:
+    """Sum both raw crafting-resource needs and total credits across every
+    still-missing item, in a single walk of the blueprint tree.
 
     Pure, no I/O — ``blueprints`` is already-fetched (blueprint_costs.
     load_blueprints); called from cli.py/web.py after plan_route returns,
     same reasoning as select_price_candidates/build_buy_vs_farm. An
     equipment name with no match in ``blueprints`` (~30% of the catalog —
     this data source's coverage is inherently partial, see blueprint_costs.py)
-    contributes nothing rather than a guess.
+    contributes nothing rather than a guess. Callers previously did this as
+    two separate passes (build_resource_needs() + total_credits_needed(),
+    always called back to back) — each re-walking the same recursive
+    blueprint_costs.expand_full_cost() tree and re-scanning
+    find_blueprint_key() for the same names; this does it once.
 
     ``owned_resources`` (from private_inventory.owned_resources, when a live
     inventory was supplied) computes ``short_by`` — the actual "what am I
@@ -919,12 +935,16 @@ def build_resource_needs(
     ``owned``/``short_by`` stay None. Sorted by shortfall (or gross need)
     descending, so the resource actually blocking you floats to the top.
     """
+    index = blueprint_costs.build_key_index(blueprints)
     totals: dict[str, int] = {}
+    credits_total = 0
     for name in equipment_names:
-        key = blueprint_costs.find_blueprint_key(name, blueprints)
+        key = blueprint_costs.find_blueprint_key(name, blueprints, index)
         if not key:
             continue
-        for res, cnt in blueprint_costs.expand_resource_cost(key, blueprints).items():
+        resources, credits = blueprint_costs.expand_full_cost(key, blueprints)
+        credits_total += credits
+        for res, cnt in resources.items():
             totals[res] = totals.get(res, 0) + cnt
 
     out: list[ResourceNeed] = []
@@ -940,21 +960,28 @@ def build_resource_needs(
         out.sort(key=lambda r: -r.need)
     else:
         out.sort(key=lambda r: (-(r.short_by or 0), -r.need))
-    return out
+    return out, credits_total
+
+
+def build_resource_needs(
+    equipment_names: list[str],
+    blueprints: dict[str, dict],
+    owned_resources: dict[str, int] | None = None,
+) -> list[ResourceNeed]:
+    """Resource-only wrapper around resource_needs_and_credits(), for
+    callers that don't also need the credits total (production code that
+    needs both should call resource_needs_and_credits() directly instead of
+    pairing this with total_credits_needed() — see that function's note)."""
+    resource_needs, _credits = resource_needs_and_credits(
+        equipment_names, blueprints, owned_resources)
+    return resource_needs
 
 
 def total_credits_needed(equipment_names: list[str], blueprints: dict[str, dict]) -> int:
-    """Sum credits needed to build every still-missing item — same data
-    source and same "unmatched equipment contributes nothing" rule as
-    build_resource_needs (kept separate rather than folded into it, since
-    that function's signature already shipped)."""
-    total = 0
-    for name in equipment_names:
-        key = blueprint_costs.find_blueprint_key(name, blueprints)
-        if key:
-            _resources, credits = blueprint_costs.expand_full_cost(key, blueprints)
-            total += credits
-    return total
+    """Credits-only wrapper around resource_needs_and_credits(), for callers
+    that don't also need the resource breakdown."""
+    _resource_needs, credits = resource_needs_and_credits(equipment_names, blueprints)
+    return credits
 
 
 _CDN = "https://cdn.warframestat.us/img/"

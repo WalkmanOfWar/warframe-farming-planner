@@ -14,11 +14,16 @@ from warframe_routes.service import Mission, RouteResult
 from warframe_routes.web import app
 
 
-def _fake_result(missing=1, non_prime=None):
+def _fake_result(missing=1, non_prime=None, **plan_route_kwargs):
+    # plan_route itself now computes partial_inventory from the
+    # account_id_given/has_full_inventory kwargs web.py passes it — mirror
+    # that here so mocking plan_route doesn't lose real wiring behavior.
     return RouteResult(
         missing_equipment=missing,
         non_prime=non_prime or [],
         missing_equipment_names=["Rhino"],
+        partial_inventory=(plan_route_kwargs.get("account_id_given", False)
+                            and not plan_route_kwargs.get("has_full_inventory", False)),
     )
 
 
@@ -54,7 +59,7 @@ def test_no_owned_source_and_no_wishlist_is_rejected(client):
 def test_wishlist_only_returns_missions(monkeypatch, client):
     monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(
         missing=1, non_prime=[Mission(node="Venus - Fossa", game_mode="Assassination",
-                                       parts=["Rhino Chassis Blueprint"])]))
+                                       parts=["Rhino Chassis Blueprint"])], **kw))
     resp = client.post("/api/route", json={"wishlist": ["Rhino"]})
     assert resp.status_code == 200, resp.text
     data_out = resp.json()
@@ -65,7 +70,7 @@ def test_wishlist_only_returns_missions(monkeypatch, client):
 
 def test_account_id_only_sets_partial_inventory_true(monkeypatch, client):
     monkeypatch.setattr(sync, "fetch_owned", lambda account_id: set())
-    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1))
+    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1, **kw))
     resp = client.post("/api/route", json={"account_id": "a" * 24, "wishlist": ["Rhino"]})
     assert resp.status_code == 200, resp.text
     assert resp.json()["partial_inventory"] is True
@@ -82,7 +87,7 @@ def test_account_id_with_uploaded_inventory_does_not_set_partial_inventory(monke
     monkeypatch.setattr(private_inventory, "owned_parts", lambda inv, items_data: set())
     monkeypatch.setattr(private_inventory, "owned_relics", lambda inv, items_data: {})
     monkeypatch.setattr(private_inventory, "owned_resources", lambda inv, items_data: {})
-    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1))
+    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1, **kw))
     resp = client.post("/api/route", json={
         "account_id": "a" * 24, "inventory": {"MiscItems": [], "XPInfo": []},
         "wishlist": ["Rhino"],
@@ -112,7 +117,7 @@ def test_account_id_with_nonce_skips_public_profile_and_note(monkeypatch, client
     monkeypatch.setattr(private_inventory, "owned_parts", lambda inv, items_data: set())
     monkeypatch.setattr(private_inventory, "owned_relics", lambda inv, items_data: {})
     monkeypatch.setattr(private_inventory, "owned_resources", lambda inv, items_data: {})
-    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1))
+    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1, **kw))
     resp = client.post("/api/route", json={
         "account_id": "a" * 24, "nonce": "live-nonce", "wishlist": ["Rhino"],
     })

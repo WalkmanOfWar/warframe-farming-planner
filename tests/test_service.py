@@ -455,6 +455,38 @@ def test_total_credits_needed_skips_unmatched_equipment():
     assert service.total_credits_needed(["Totally Unknown Item"], {}) == 0
 
 
+def test_resource_needs_and_credits_single_pass_matches_the_two_wrappers():
+    blueprints = {
+        "Rhino": {
+            "Credits": 25000,
+            "Parts": [{"Count": 3, "Name": "Orokin Cell", "Type": "Resource"}],
+        },
+        "Volt Prime": {
+            "Credits": 15000,
+            "Parts": [{"Count": 500, "Name": "Circuits", "Type": "Resource"}],
+        },
+    }
+    resource_needs, credits = service.resource_needs_and_credits(
+        ["Rhino", "Volt Prime"], blueprints)
+    assert credits == 40000
+    by_res = {r.resource: r.need for r in resource_needs}
+    assert by_res == {"Orokin Cell": 3, "Circuits": 500}
+    # The two narrower wrappers must agree with the combined call.
+    assert service.build_resource_needs(["Rhino", "Volt Prime"], blueprints) == resource_needs
+    assert service.total_credits_needed(["Rhino", "Volt Prime"], blueprints) == credits
+
+
+def test_plan_route_sets_partial_inventory_from_account_and_inventory_flags():
+    base = dict(owned=set(), want=WANT, owned_parts=set(),
+                items_data=ITEMS, mission_rewards=MISSION_REWARDS)
+    assert service.plan_route(**base).partial_inventory is False
+    assert service.plan_route(**base, account_id_given=True).partial_inventory is True
+    assert service.plan_route(
+        **base, account_id_given=True, has_full_inventory=True).partial_inventory is False
+    # No account at all: a full inventory flag alone shouldn't matter.
+    assert service.plan_route(**base, has_full_inventory=True).partial_inventory is False
+
+
 def test_build_priority_actions_empty_result_has_no_actions():
     assert service.build_priority_actions(service.RouteResult(missing_equipment=0)) == []
 
