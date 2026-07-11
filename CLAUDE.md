@@ -243,12 +243,16 @@ Both the **Prime relic chain and the non-Prime direct chain are built**
    in `service.plan_route`: `fissures` (which relic tiers are actionable
    *right now*, plus double-dip detection when a route node is itself an open
    fissure — `Mission.live_fissure`/`PrimeRelic.tier_live`/`farm_node_live`),
-   `voidTrader` (Baro Ki'Teer stock), `invasions` (matching rewards),
-   `vaultTrader` (Varzia/Prime Resurgence — the *only* non-trade way to buy
-   fully-vaulted equipment, matched against `vaulted_equipment`; store item
-   names are inconsistent, e.g. `"Prime Corinth"` for `"Corinth Prime"`, so
-   `worldstate.vault_trader_stock` indexes both word orders), and
-   `dailyDeals` (Darvo's single rotating item). Nightwave cred-shop items are
+   `voidTrader` (Baro Ki'Teer stock), `invasions` (matching rewards), and
+   `dailyDeals` (Darvo's single rotating item). `vaultTrader` (Varzia/Prime
+   Resurgence) is deliberately **not** consumed — her Prime Warframe/Weapon
+   *set* listings are Regal Aya only (a real-money premium currency, not the
+   free/farmable Aya used for Void Relics), so "buy it from Varzia" isn't a
+   farming alternative this tool can suggest without contradicting its own
+   no-real-money stance (same reasoning as the login.php rejection above).
+   This was originally built and shipped, then removed after review caught
+   that it was surfacing a paid-only option as if it were a legitimate route.
+   Nightwave cred-shop items are
    *not* labelled — `/pc/nightwave` exposes challenges/reputation only, never
    the rotating shop stock; there is no data source, live or static, short of
    hand-maintaining a JSON that goes stale every ~3-month season (rejected —

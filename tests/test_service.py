@@ -496,18 +496,15 @@ def test_build_priority_actions_live_relic_farm_node_is_now():
     assert "Axi N3 Relic" in actions[0].detail
 
 
-def test_build_priority_actions_vault_trader_and_invasions_are_soon():
+def test_build_priority_actions_invasions_are_soon():
     result = service.RouteResult(
         missing_equipment=1,
-        vault_trader={"location": "Maroo's Bazaar", "until": "in 3 weeks",
-                      "items": {"norm": "Ash Prime"}},
         event_source={"Invasion — Phobos": ["Ash Prime Systems"]},
     )
     actions = service.build_priority_actions(result)
-    urgencies = {a.urgency for a in actions}
-    assert urgencies == {"soon"}
-    assert any("Varzia" in a.title for a in actions)
-    assert any("invasion" in a.title for a in actions)
+    assert len(actions) == 1
+    assert actions[0].urgency == "soon"
+    assert "invasion" in actions[0].title
 
 
 def test_build_priority_actions_radiant_relic_suggests_squad_unless_already_on():
@@ -539,7 +536,7 @@ def test_build_priority_actions_orders_now_before_soon_before_squad():
     result = service.RouteResult(
         missing_equipment=1,
         daily_deal={"item": "X", "discount": 10, "expiry": "today"},
-        vault_trader={"location": "Y", "until": "later", "items": {"a": "b"}},
+        event_source={"Invasion — Phobos": ["X"]},
         non_prime=[service.Mission(node="Uranus - Ur", game_mode="Disruption", parts=["X"])],
     )
     actions = service.build_priority_actions(result)

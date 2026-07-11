@@ -196,7 +196,6 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         fissures=_ws("fissures"),
         void_trader=_ws("voidTrader"),
         invasions=_ws("invasions"),
-        vault_trader=_ws("vaultTrader"),
         daily_deals=_ws("dailyDeals"),
     )
 
@@ -312,14 +311,6 @@ def route(account_id: str | None, inventory_file: str | None, nonce: str | None,
         click.echo(f"\nBaro Ki'Teer has {len(result.baro['items'])} item(s) you need "
                    f"(at {result.baro['location']}, until {result.baro['until']}):")
         for item in result.baro["items"]:
-            click.echo(f"  - {item}")
-
-    if result.vault_trader:
-        click.echo(f"\nVarzia (Prime Resurgence) is selling "
-                   f"{len(result.vault_trader['items'])} fully-vaulted item(s) you need "
-                   f"(at {result.vault_trader['location']}, until "
-                   f"{result.vault_trader['until']}) — the only non-trade way to get them:")
-        for item in result.vault_trader["items"]:
             click.echo(f"  - {item}")
 
     if result.daily_deal:

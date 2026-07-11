@@ -105,7 +105,7 @@ function PriceTag({ name, prices, deals }) {
     return (
       <a href={deal.url} target="_blank" rel="noopener noreferrer"
         title={deal.minutes == null
-          ? 'Vaulted — no farm route exists. Buying (or trading/Varzia) is the only option.'
+          ? 'Vaulted — no farm route exists. Trading with another player is the only option.'
           : `Farming this run costs ~${fmtHours(deal.minutes)}${deal.shared_with > 0 ? ` (shared with ${deal.shared_with} other needed part(s))` : ''} — click to view on warframe.market`}
         style={{
           fontSize: 11, fontWeight: 700, color: C.error,
@@ -1410,24 +1410,6 @@ function Results({ r }) {
           </CollapsibleCard>
         )
       })()}
-
-      {r.vault_trader && (
-        <Card style={{ marginBottom: 16, borderColor: C.goldBorder }}>
-          <div style={{ padding: '16px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <Gem size={15} color={C.gold} />
-              <span style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>
-                Varzia is selling {r.vault_trader.items.length} fully-vaulted item{r.vault_trader.items.length !== 1 ? 's' : ''} you need
-              </span>
-            </div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
-              Prime Resurgence — the only non-trade way to get these. At {r.vault_trader.location}
-              {r.vault_trader.until ? ` · ends ${new Date(r.vault_trader.until).toLocaleString()}` : ''}
-            </div>
-            <ItemGrid items={r.vault_trader.items} images={img} />
-          </div>
-        </Card>
-      )}
 
       {r.baro && (
         <Card style={{ marginBottom: 16, borderColor: C.eventBorder }}>
