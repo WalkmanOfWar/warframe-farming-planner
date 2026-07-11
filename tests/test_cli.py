@@ -81,6 +81,29 @@ def test_account_id_only_shows_partial_inventory_note(monkeypatch, tmp_path):
     assert "Using public profile only" in result.output
 
 
+def test_account_id_with_inventory_file_does_not_show_partial_note(monkeypatch, tmp_path):
+    # --inventory already has loose parts; pairing it with --account-id (to also
+    # catch anything newer on the public profile) must not claim the data is partial.
+    inv_path = tmp_path / "inventory.json"
+    inv_path.write_text('{"MiscItems": [], "XPInfo": []}')
+    monkeypatch.setattr(private_inventory, "load_inventory",
+                         lambda path: {"MiscItems": [], "XPInfo": []})
+    monkeypatch.setattr(sync, "fetch_owned", lambda account_id: set())
+    monkeypatch.setattr(private_inventory, "collect_item_types", lambda inv: set())
+    monkeypatch.setattr(sync, "resolve_names", lambda types, items_data: set())
+    monkeypatch.setattr(private_inventory, "pending_owned", lambda inv, items_data: (set(), set()))
+    monkeypatch.setattr(private_inventory, "owned_parts", lambda inv, items_data: set())
+    monkeypatch.setattr(private_inventory, "owned_relics", lambda inv, items_data: {})
+    monkeypatch.setattr(private_inventory, "owned_resources", lambda inv, items_data: {})
+    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1))
+    result = CliRunner().invoke(cli.cli, [
+        "route", "--account-id", "a" * 24, "--inventory", str(inv_path),
+        "--wishlist", _wishlist(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    assert "Using public profile only" not in result.output
+
+
 def test_invalid_account_id_reported_as_bad_parameter(monkeypatch, tmp_path):
     def _raise(account_id):
         raise sync.InvalidAccountId("bad id")

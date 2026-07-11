@@ -71,6 +71,26 @@ def test_account_id_only_sets_partial_inventory_true(monkeypatch, client):
     assert resp.json()["partial_inventory"] is True
 
 
+def test_account_id_with_uploaded_inventory_does_not_set_partial_inventory(monkeypatch, client):
+    # An uploaded inventory.json already has loose parts; pairing it with
+    # account_id (to also catch anything newer on the public profile) must
+    # not claim the data is partial.
+    monkeypatch.setattr(sync, "fetch_owned", lambda account_id: set())
+    monkeypatch.setattr(private_inventory, "collect_item_types", lambda inv: set())
+    monkeypatch.setattr(sync, "resolve_names", lambda types, items_data: set())
+    monkeypatch.setattr(private_inventory, "pending_owned", lambda inv, items_data: (set(), set()))
+    monkeypatch.setattr(private_inventory, "owned_parts", lambda inv, items_data: set())
+    monkeypatch.setattr(private_inventory, "owned_relics", lambda inv, items_data: {})
+    monkeypatch.setattr(private_inventory, "owned_resources", lambda inv, items_data: {})
+    monkeypatch.setattr(service, "plan_route", lambda **kw: _fake_result(missing=1))
+    resp = client.post("/api/route", json={
+        "account_id": "a" * 24, "inventory": {"MiscItems": [], "XPInfo": []},
+        "wishlist": ["Rhino"],
+    })
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["partial_inventory"] is False
+
+
 def test_invalid_account_id_returns_400(monkeypatch, client):
     def _raise(account_id):
         raise sync.InvalidAccountId("bad id")
