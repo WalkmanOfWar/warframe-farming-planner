@@ -984,7 +984,7 @@ function Results({ r }) {
                   }}>{s.label}</span>
                   <div>
                     <div style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>
-                      {a.title}{a.expiry ? <span style={{ color: C.muted, fontWeight: 400 }}> — until {a.expiry}</span> : null}
+                      {a.title}{a.expiry ? <span style={{ color: C.muted, fontWeight: 400 }}> — until {new Date(a.expiry).toLocaleString()}</span> : null}
                     </div>
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{a.detail}</div>
                   </div>

@@ -779,14 +779,21 @@ def build_priority_actions(result: RouteResult) -> list[PriorityAction]:
         ))
 
     if not result.squad_radiant:
+        # best_refinement is computed at whatever squad_size the plan already
+        # uses (1, since squad_radiant is off here) — so "Radiant" here means
+        # the tool's own math already found Radiant fastest solo for this
+        # relic. Don't claim solo isn't worth it; that would contradict the
+        # plan's own recommendation. Squad cracking is still worth flagging:
+        # it multiplies rare-part rolls further on top of that.
         radiant_worth_it = [pr.relic for pr in result.prime if pr.best_refinement == "Radiant"]
         if radiant_worth_it:
             actions.append(PriorityAction(
                 urgency="squad",
                 title=f"{len(radiant_worth_it)} relic(s) farm fastest as Radiant",
-                detail="Radiant only pays off with a squad sharing 4 cracks per run "
-                       "(enable 4× squad radiant cracking) — solo it's often not "
-                       "worth the refinement cost.",
+                detail="Refine to Radiant when cracking these — already the fastest "
+                       "option for the parts you need. Enable 4× squad radiant "
+                       "cracking too: sharing cracks across a squad multiplies your "
+                       "rare-part rolls.",
             ))
 
     squad_modes = sorted({

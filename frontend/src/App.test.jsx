@@ -53,7 +53,11 @@ describe('App', () => {
     expect(global.fetch).toHaveBeenCalledWith('/api/route', expect.objectContaining({
       method: 'POST',
     }))
-    const [, options] = global.fetch.mock.calls[0]
+    // Not necessarily call[0]: the wishlist textarea's autocomplete fires its
+    // own debounced GET /api/items while the user types, which can land
+    // before or after this POST depending on timing -- find the route call
+    // by URL instead of assuming position.
+    const [, options] = global.fetch.mock.calls.find(([url]) => url === '/api/route')
     const body = JSON.parse(options.body)
     expect(body.wishlist).toEqual(['Rhino'])
     expect(screen.getByText('Rhino Chassis Blueprint')).toBeInTheDocument()
@@ -124,5 +128,33 @@ describe('App', () => {
     expect(screen.getByText(/Darvo's Daily Deal/)).toBeInTheDocument()
     expect(screen.getByText('NOW')).toBeInTheDocument()
     expect(screen.getByText('SQUAD')).toBeInTheDocument()
+  })
+
+  it('formats a priority-action expiry as a readable date, not a raw ISO string', async () => {
+    const isoExpiry = '2026-07-12T18:00:00.000Z'
+    global.fetch.mockReturnValue(jsonResponse({
+      missing_equipment: 1, non_prime: [], non_prime_uncovered: [],
+      prime: [], prime_part_count: 0, tiers: [], vaulted_equipment: [],
+      vaulted_part_count: 0, vaulted_crackable: [], no_mission_source: [],
+      no_part_source: {}, special_source: {}, equipment_prerequisites: {},
+      images: {}, item_types: {}, refinement: 'Intact', squad_radiant: false,
+      total_minutes: null, event_source: {}, active_fissures: {}, baro: null,
+      daily_deal: null, market_prices: {}, buy_vs_farm: [],
+      missing_equipment_names: ['Rhino'], resource_needs: [], credits_needed: null,
+      partial_inventory: false,
+      priority_actions: [
+        { urgency: 'now', title: "Darvo's Daily Deal: Rhino Prime",
+          detail: '50% off — one day only.', expiry: isoExpiry },
+      ],
+    }))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByPlaceholderText(/Caliban Prime/), 'Rhino')
+    await user.click(screen.getByRole('button', { name: /Plan route/i }))
+
+    await waitFor(() => expect(screen.getByText('What to do first')).toBeInTheDocument())
+    expect(screen.queryByText(new RegExp(isoExpiry))).not.toBeInTheDocument()
+    expect(screen.getByText(new RegExp(new Date(isoExpiry).toLocaleString().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeInTheDocument()
   })
 })
