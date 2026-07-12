@@ -526,6 +526,16 @@ def test_plan_route_sets_partial_inventory_from_account_and_inventory_flags():
     assert service.plan_route(**base, has_full_inventory=True).partial_inventory is False
 
 
+def test_plan_route_leaves_priority_actions_for_the_caller():
+    # priority_actions cross-checks buy_vs_farm (only known after the
+    # caller's market.fetch_prices() call, a network call plan_route itself
+    # never makes) -- plan_route only prepares invasion_parts for it.
+    result = service.plan_route(owned=set(), want=WANT, owned_parts=set(),
+                                items_data=ITEMS, mission_rewards=MISSION_REWARDS)
+    assert result.priority_actions == []
+    assert isinstance(result.invasion_parts, list)
+
+
 def test_build_priority_actions_empty_result_has_no_actions():
     assert service.build_priority_actions(service.RouteResult(missing_equipment=0)) == []
 
@@ -565,6 +575,36 @@ def test_build_priority_actions_live_relic_farm_node_is_now():
     assert len(actions) == 1
     assert actions[0].urgency == "now"
     assert "Axi N3 Relic" in actions[0].detail
+
+
+def test_build_priority_actions_flags_live_fissure_that_is_cheaper_to_buy():
+    # If the same part a live fissure would farm is also flagged in
+    # buy_vs_farm (select_price_candidates already judged that farm route
+    # slow/vaulted enough to be worth a market lookup), the "now" action
+    # must say so rather than unconditionally pushing the player to farm.
+    result = service.RouteResult(
+        missing_equipment=1,
+        non_prime=[service.Mission(node="Venus - Fossa", game_mode="Assassination",
+                                    parts=["Rhino Chassis Blueprint"], live_fissure="Lith")],
+        buy_vs_farm=[service.BuyVsFarm(item="Rhino Chassis Blueprint", plat=15,
+                                       tradable=True, url=None, minutes=360, source="Venus - Fossa")],
+    )
+    actions = service.build_priority_actions(result)
+    assert len(actions) == 1
+    assert "cheaper to buy" in actions[0].detail
+
+
+def test_build_priority_actions_live_relic_farm_flags_when_cheaper_to_buy():
+    result = service.RouteResult(
+        missing_equipment=1,
+        prime=[service.PrimeRelic(relic="Axi N3 Relic", tier="Axi", parts=["Nova Prime Systems"],
+                                   farm_node_live=True)],
+        buy_vs_farm=[service.BuyVsFarm(item="Nova Prime Systems", plat=20,
+                                       tradable=True, url=None, minutes=400, source="Axi N3 Relic")],
+    )
+    actions = service.build_priority_actions(result)
+    assert len(actions) == 1
+    assert "cheaper to buy" in actions[0].detail
 
 
 def test_build_priority_actions_invasions_are_soon():

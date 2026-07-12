@@ -179,6 +179,11 @@ def route(req: RouteRequest) -> dict:
     except Exception:
         pass  # resource costs are a bonus annotation, never required
 
+    # After buy_vs_farm so the "now" fissure actions can cross-check it —
+    # see build_priority_actions()'s docstring.
+    result.priority_actions = service.build_priority_actions(
+        result, invasion_parts=set(result.invasion_parts))
+
     return result.to_dict()
 
 
