@@ -211,9 +211,16 @@ class RouteResult:
     # account was given at all.
     partial_inventory: bool = False
     # "Do this now / soon / with a squad" digest — see build_priority_actions().
-    # Set by plan_route itself (not the caller): it only re-reads fields the
-    # rest of this function already computed, no extra I/O.
+    # Set by the caller (cli.py/web.py) *after* market_prices/buy_vs_farm are
+    # populated, since the digest cross-checks buy_vs_farm to avoid telling
+    # the player to rush a live fissure for something actually cheaper to
+    # buy — unlike plan_route's other self-computed fields, this one has a
+    # real dependency on caller-side data plan_route itself can't fetch.
     priority_actions: list[PriorityAction] = field(default_factory=list)
+    # Needed item names currently matching a live invasion reward — computed
+    # by plan_route (from its own invasion_hits, no extra I/O) and consumed
+    # by the caller's build_priority_actions() call; see there.
+    invasion_parts: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -718,8 +725,14 @@ def plan_route(
     for desc, its in sorted(invasion_hits.items()):
         result.event_source.setdefault(desc, sorted(set(its)))
 
-    invasion_parts = {name for names in invasion_hits.values() for name in names}
-    result.priority_actions = build_priority_actions(result, invasion_parts=invasion_parts)
+    # priority_actions isn't built here: it now cross-checks buy_vs_farm to
+    # avoid telling the player to rush a live fissure for something that's
+    # actually cheaper to buy, and buy_vs_farm is only known after the
+    # caller's market.fetch_prices() call, which happens after plan_route
+    # returns (this function makes no network calls). result.invasion_parts
+    # carries the one piece build_priority_actions needs that plan_route
+    # itself computed, so the caller doesn't have to re-derive it.
+    result.invasion_parts = sorted({name for names in invasion_hits.values() for name in names})
 
     return result
 
@@ -729,10 +742,13 @@ def build_priority_actions(
 ) -> list[PriorityAction]:
     """Rank plan_route's live-worldstate signals into "do this now" / "do
     this soon" / "better with a squad" — a synthesis, not a new data source.
-    Pure: only reads fields plan_route already populated on ``result`` plus
-    ``invasion_parts`` (the item names plan_route's own invasion_hits already
-    matched). Called from inside plan_route itself, right before it returns,
-    since everything it reads is already computed by that point.
+    Pure: only reads fields already populated on ``result`` plus
+    ``invasion_parts`` (pass ``result.invasion_parts``, computed by
+    plan_route from its own invasion_hits). Called by the caller
+    (cli.py/web.py) *after* market_prices/buy_vs_farm are populated — not
+    from inside plan_route like most of ``result``'s other fields — because
+    the "now" fissure actions cross-check buy_vs_farm (see below), and
+    buy_vs_farm needs a network call plan_route itself never makes.
 
     ``invasion_parts`` is passed explicitly rather than re-derived from
     ``result.event_source`` by matching an "Invasion — " string prefix:
@@ -768,25 +784,40 @@ def build_priority_actions(
             expiry=result.baro.get("until"),
         ))
 
+    # A live fissure is only genuinely "do this now" if farming still beats
+    # buying — select_price_candidates()/build_buy_vs_farm() already judged
+    # that for anything slow/vaulted enough to be worth a market lookup, so
+    # cross-check rather than re-deriving the same "is this actually a good
+    # farm?" judgement a second time.
+    buy_vs_farm_items = {b.item for b in result.buy_vs_farm}
+
     live_fissure_nodes = [m.node for m in result.non_prime if m.live_fissure]
     if live_fissure_nodes:
         shown = ", ".join(live_fissure_nodes[:5])
         more = "…" if len(live_fissure_nodes) > 5 else ""
+        flagged = sum(1 for m in result.non_prime
+                      if m.live_fissure and any(p in buy_vs_farm_items for p in m.parts))
+        caveat = (f" ({flagged} of these may be cheaper to buy than farm — "
+                  "see Buy instead of farm below)" if flagged else "")
         actions.append(PriorityAction(
             urgency="now",
             title=f"{len(live_fissure_nodes)} route node(s) are open fissures right now",
             detail=f"Bring a relic and crack it in the same run as the part farm: "
-                   f"{shown}{more}.",
+                   f"{shown}{more}.{caveat}",
         ))
 
     live_relic_farms = [pr.relic for pr in result.prime if pr.farm_node_live]
     if live_relic_farms:
         shown = ", ".join(live_relic_farms[:5])
         more = "…" if len(live_relic_farms) > 5 else ""
+        flagged = sum(1 for pr in result.prime
+                      if pr.farm_node_live and any(p in buy_vs_farm_items for p in pr.parts))
+        caveat = (f" ({flagged} of these may be cheaper to buy than farm — "
+                  "see Buy instead of farm below)" if flagged else "")
         actions.append(PriorityAction(
             urgency="now",
             title=f"{len(live_relic_farms)} relic farm node(s) are open fissures right now",
-            detail=f"Farm and crack together in one run: {shown}{more}.",
+            detail=f"Farm and crack together in one run: {shown}{more}.{caveat}",
         ))
 
     invasion_parts_sorted = sorted(invasion_parts or set())
