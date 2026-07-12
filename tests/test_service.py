@@ -414,6 +414,45 @@ def test_active_fissures_prefer_fast_crack_modes_over_alphabetical_node():
     assert live[0]["node"] == "Zzz Node (Mars)"
 
 
+def test_fissure_covers_tier_matches_exact_or_omnia_except_requiem():
+    assert service._fissure_covers_tier("Axi", "Axi") is True
+    assert service._fissure_covers_tier("Lith", "Axi") is False
+    assert service._fissure_covers_tier("Omnia", "Axi") is True
+    assert service._fissure_covers_tier("Omnia", "Lith") is True
+    assert service._fissure_covers_tier("Omnia", "Requiem") is False
+
+
+def test_omnia_fissure_counts_as_live_and_farmable_for_needed_tier():
+    # An Omnia fissure lets you crack any non-Requiem relic tier -- a live
+    # Omnia fissure at the relic's farm node (or anywhere, for tier_live)
+    # must count as actionable even though its own tier string is "Omnia",
+    # not "Axi".
+    items_data = [{
+        "name": "Volt Prime", "masterable": True,
+        "components": [{
+            "name": "Chassis",
+            "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/VoltPrimeChassis",
+            "drops": [{"type": "Volt Prime Chassis", "chance": 11.0,
+                       "location": "Axi V8 Relic"}],
+        }],
+    }]
+    mission_rewards = {"missionRewards": {"Lua": {"Apollo": {
+        "gameMode": "Disruption",
+        "rewards": {"A": [{"itemName": "Axi V8 Relic", "chance": 10.0}]},
+    }}}}
+    fissures = [
+        {"tier": "Omnia", "node": "Apollo (Lua)", "missionType": "Disruption",
+         "isHard": False, "isStorm": False, "expiry": None},
+    ]
+    res = service.plan_route(owned=set(), want={"volt prime"}, owned_parts=set(),
+                             items_data=items_data, mission_rewards=mission_rewards,
+                             fissures=fissures)
+    assert res.prime[0].tier_live is True
+    assert res.prime[0].farm_node_live is True
+    assert "Axi" in res.active_fissures
+    assert res.active_fissures["Axi"][0]["tier"] == "Omnia"
+
+
 def test_build_resource_needs_sums_across_equipment_gross():
     blueprints = {
         "Rhino": {"Parts": [{"Count": 2, "Name": "Neurodes", "Type": "Resource"}]},
