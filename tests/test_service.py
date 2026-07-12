@@ -577,6 +577,31 @@ def test_build_priority_actions_live_relic_farm_node_is_now():
     assert "Axi N3 Relic" in actions[0].detail
 
 
+def test_build_priority_actions_owned_relic_with_live_tier_is_now():
+    # Cracking a relic you already own costs nothing but the fissure run --
+    # the single best "now" opportunity -- so this must fire independently
+    # of farm_node_live (you don't need to farm more copies to act on it).
+    result = service.RouteResult(
+        missing_equipment=1,
+        prime=[service.PrimeRelic(relic="Axi N3 Relic", tier="Axi", parts=["Nova Prime Systems"],
+                                   owned=2, tier_live=True)],
+    )
+    actions = service.build_priority_actions(result)
+    assert len(actions) == 1
+    assert actions[0].urgency == "now"
+    assert "Axi N3 Relic ×2" in actions[0].detail
+    assert "Zero farming" in actions[0].detail
+
+
+def test_build_priority_actions_owned_relic_without_live_tier_is_silent():
+    result = service.RouteResult(
+        missing_equipment=1,
+        prime=[service.PrimeRelic(relic="Axi N3 Relic", tier="Axi", parts=["Nova Prime Systems"],
+                                   owned=2, tier_live=False)],
+    )
+    assert service.build_priority_actions(result) == []
+
+
 def test_build_priority_actions_flags_live_fissure_that_is_cheaper_to_buy():
     # If the same part a live fissure would farm is also flagged in
     # buy_vs_farm (select_price_candidates already judged that farm route
