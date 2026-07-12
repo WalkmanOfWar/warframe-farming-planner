@@ -784,6 +784,20 @@ def build_priority_actions(
             expiry=result.baro.get("until"),
         ))
 
+    # Cracking a relic you already own costs nothing but the fissure run --
+    # no farming at all -- so this is the single best "now" opportunity
+    # whenever its tier happens to be live.
+    owned_live_relics = [(pr.relic, pr.owned) for pr in result.prime
+                         if pr.owned > 0 and pr.tier_live]
+    if owned_live_relics:
+        shown = ", ".join(f"{relic} ×{owned}" for relic, owned in owned_live_relics[:5])
+        more = "…" if len(owned_live_relics) > 5 else ""
+        actions.append(PriorityAction(
+            urgency="now",
+            title=f"Crack {len(owned_live_relics)} relic(s) you already own",
+            detail=f"Zero farming — their fissure tier is open right now: {shown}{more}.",
+        ))
+
     # A live fissure is only genuinely "do this now" if farming still beats
     # buying — select_price_candidates()/build_buy_vs_farm() already judged
     # that for anything slow/vaulted enough to be worth a market lookup, so

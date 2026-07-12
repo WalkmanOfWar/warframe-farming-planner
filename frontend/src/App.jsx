@@ -974,7 +974,7 @@ function Results({ r }) {
   return (
     <div>
       {/* Priority actions — what to do first */}
-      {r.priority_actions?.length > 0 && (
+      {!sq && r.priority_actions?.length > 0 && (
         <div style={{
           marginBottom: 16, padding: '14px 16px',
           background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
@@ -1067,34 +1067,6 @@ function Results({ r }) {
           </span>
         </div>
       )}
-
-      {/* Do right now — actions that are both cheapest and live at this moment */}
-      {!sq && (() => {
-        const now = []
-        const ownedLive = primeLive.filter(p => p.owned > 0 && p.tier_live)
-        if (ownedLive.length) now.push(
-          `Crack relics you already own (${ownedLive.map(p => `${p.relic} ×${p.owned}`).join(', ')}) — zero farming, their fissure tier is open now`)
-        primeLive.filter(p => p.farm_node_live).forEach(p => now.push(
-          `${(p.farm_node || '').split(' / ').pop()} is a LIVE ${p.tier} fissure — farm ${p.relic} while cracking one per run`))
-        nonPrimeLive.filter(m => m.live_fissure).forEach(m => now.push(
-          `Run ${m.node} as a ${m.live_fissure} fissure — farm ${m.parts.length > 1 ? 'its parts' : m.parts[0]} and crack a relic in the same mission`))
-        if (!now.length) return null
-        return (
-          <Card accent style={{ marginBottom: 16, padding: '16px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <Zap size={15} color={C.gold} />
-              <span style={{ fontWeight: 700, fontSize: 15, color: C.gold }}>Do right now</span>
-              <span style={{ fontSize: 12, color: C.muted }}>— best value while these fissures are open</span>
-            </div>
-            {now.slice(0, 5).map((t, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 13, color: C.text }}>
-                <span style={{ color: C.gold, fontWeight: 700 }}>{i + 1}.</span>
-                <span>{t}</span>
-              </div>
-            ))}
-          </Card>
-        )
-      })()}
 
       {/* Non-prime */}
       {nonPrimeLive.length > 0 && sortedNonPrime.length > 0 && (
